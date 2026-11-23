@@ -172,6 +172,67 @@
     - id: cordis-inspect-providers
       name: '@deepseek-ai/dsh-tool-cordis/host'
 
+    # YXSpec ASPICE process surface: the host Remote owner exposes the stage
+    # model plus each stage's artifact landing status as the `yxspec` namespace,
+    # and the client half renders it as a section inside the Session panel.
+    #
+    # Mount order matters: yxspec (domain service) and yxspec-artifact (landing
+    # ledger) are injected by yxspec-api, and yxspec-gate/freeze/step wrap the
+    # `tools` pipeline, so `tools` must already be present. A row whose inject is
+    # unsatisfied stays pending and its listeners never register — the gate
+    # would silently stop denying instead of failing loud.
+    - id: yxspec
+      name: '@deepseek-ai/dsh-yxspec'
+
+    - id: yxspec-artifact
+      name: '@deepseek-ai/dsh-yxspec-artifact'
+
+    - id: yxspec-dispatch
+      name: '@deepseek-ai/dsh-yxspec-dispatch'
+
+    - id: yxspec-api
+      name: '@deepseek-ai/dsh-yxspec-api'
+
+    # Frozen-artifact write guard and step-input check over `tools/pre-execute`.
+    - id: yxspec-gate
+      name: '@deepseek-ai/dsh-yxspec-gate'
+
+    # Fail-closed confirmation for writes that cross a frozen stage boundary.
+    - id: yxspec-freeze
+      name: '@deepseek-ai/dsh-yxspec-freeze'
+
+    # yxspec_status / yxspec_next tools over the domain service and ledger.
+    #
+    # Disabled on the host plane and mounted by the presets that want it, the way
+    # `tool-goal` and `tool-plugin-manager` are: the stage model is a project's, and
+    # a host-plane row reaches every session in the deployment regardless of which
+    # project it is in. A preset row puts the two schemas in the request context of
+    # the agents whose composition asked for them.
+    - id: yxspec-step
+      name: '@deepseek-ai/dsh-yxspec-step'
+      disabled: true
+
+    # Remote compile verification: declared build servers plus remote_build /
+    # remote_server_declare / remote_server_list over the platform's own OpenSSH
+    # client. Mounted after workspaceRegistry, whose primary root is the default
+    # archive source, and after storageDomain, which backs the run ledger.
+    #
+    # The SERVICE stays here; only the tools move behind presets, in the sibling
+    # row below. The onboarding wizard's server step reads the `yxspecRemote`
+    # Remote namespace, so mounting this row alone is what keeps a deployment
+    # listing the servers its projects declared even when no agent got a
+    # build-server tool.
+    - id: yxspec-remote
+      name: '@deepseek-ai/dsh-yxspec-remote'
+      inject: [subprocess, storageDomain, workspaceRegistry]
+
+    # The three model-facing build-server tools over the host service above.
+    # Disabled here for the same reason `yxspec-step` is: a host-plane
+    # registration would put the schemas in every session's request context.
+    - id: yxspec-remote-tools
+      name: '@deepseek-ai/dsh-yxspec-remote/tools'
+      disabled: true
+
     # Ordinary provider for the parsed Web flags. Its plugin-level injection
     # waits for cmdlineArgs; no launcher metadata or special row kind is needed.
     - id: web-startup
@@ -451,6 +512,12 @@
     - id: ui-session-panel
       name: '@deepseek-ai/dsh-client-ui-session-panel'
 
+    # YXSpec ASPICE stage/artifact section inside the Session panel, over the
+    # `yxspec` Remote namespace. Read-only by design: advancing a stage stays
+    # behind the host gate, never a client control.
+    - id: ui-yxspec
+      name: '@deepseek-ai/dsh-client-ui-yxspec'
+
     # Goal surface: GoalBar in the input dock over the goal session projection.
     - id: ui-goal
       name: '@deepseek-ai/dsh-client-ui-goal'
@@ -620,6 +687,17 @@
   disabled: true
 
 - id: tool-web
+  disabled: true
+
+# Preset-owned rows whose definitions sit in the host `insert` above. The
+# plane validator collects `disabled` only from top-level entries, so a
+# suppression that lives inside the `insert` alone is invisible to it and the
+# row reads as active on both planes — the same reason `tool-plugin-manager`
+# and `tool-goal` restate their `disabled` here.
+- id: yxspec-step
+  disabled: true
+
+- id: yxspec-remote-tools
   disabled: true
 
 # The preset selection registry. The shipped preset declarations follow as

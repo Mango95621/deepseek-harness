@@ -137,3 +137,12 @@
           - id: tool-plugin-market
             name: '@deepseek-ai/dsh-plugin-market/tools'
             disabled: true
+          # YXSpec's process tools. The host plane disables both rows; the three
+          # presets that run a gated ASPICE flow re-enable them here, and
+          # `minimal` does not. Each registration additionally carries a
+          # step-time guard that restricts it to a project declaring a YXSpec
+          # process, so a session in any other project never pays for them.
+          - id: yxspec-step
+            name: '@deepseek-ai/dsh-yxspec-step'
+          - id: yxspec-remote-tools
+            name: '@deepseek-ai/dsh-yxspec-remote/tools'

@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Control de etapas YXSpec",
+    "description": "Convierte las compuertas de etapa ASPICE de texto en intercepción a nivel de host antes de ejecutar una herramienta."
+  }
+}

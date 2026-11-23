@@ -22,12 +22,12 @@
     - code: fixture-row
     - text: 已关闭
   - listitem:
-    - text: 文件搜索 搜索工作区中的文件。
+    - text: 文件搜索 搜索项目中的文件。
     - code: fixture-search
     - code: "@fixture/bundle/search"
     - text: 已关闭
   - listitem:
-    - text: 代码审查 审查工作区中的改动。
+    - text: 代码审查 审查项目中的改动。
     - code: fixture-review
     - code: "@fixture/bundle/review"
     - text: 已关闭

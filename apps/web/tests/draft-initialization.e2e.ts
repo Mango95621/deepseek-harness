@@ -341,15 +341,17 @@ it('rebuilds a claimed command chip from the stored draft after reload without s
 it('restores repeated file, folder and Session capsules across edits, Workspace switches and reload without submitting', async () => {
   const { scaffold, page, console, first, firstId, second } = await launchDraftFixture()
   for (const workspace of [first, second]) {
-    await mkdir(join(workspace.path, '目录'))
-    await writeFile(join(workspace.path, FILE_NAME), FILE_BODY)
+    // Both fixtures were created over real directories, so each declares a root.
+    const workspacePath = workspace.path!
+    await mkdir(join(workspacePath, '目录'))
+    await writeFile(join(workspacePath, FILE_NAME), FILE_BODY)
   }
   await initialize(page, '', second.id)
   await expect.poll(() => second.sessionIds.length, SETTLE).toBe(1)
   const secondId = second.sessionIds[0]!
   await assertDraft(page, secondId, EMPTY)
-  const firstDraft = structuredDraft(secondId, '工作区甲')
-  const secondDraft = structuredDraft(firstId, '工作区乙')
+  const firstDraft = structuredDraft(secondId, '项目甲')
+  const secondDraft = structuredDraft(firstId, '项目乙')
   await restoreStoredDrafts(page, [
     { sessionId: firstId, draft: firstDraft },
     { sessionId: secondId, draft: secondDraft },
@@ -397,7 +399,7 @@ it('restores repeated file, folder and Session capsules across edits, Workspace 
         },
       ],
       "paragraphs": [
-        "工作区乙 🧭 é 雪",
+        "项目乙 🧭 é 雪",
         "notes 雪.md 目录/ 关联会话 🧩 ",
         "notes 雪.md 目录/ 关联会话 🧩 ",
         "普通文字 @\"notes 雪.md\"，末尾 🦉",
@@ -571,13 +573,15 @@ it('rematches the current draft after a delayed real skills catalog without repl
 it('carries all reference capsules through the real Workspace picker and leaves the source draft empty', async () => {
   const { scaffold, page, console, first, firstId, second } = await launchDraftFixture()
   for (const workspace of [first, second]) {
-    await mkdir(join(workspace.path, '目录'))
-    await writeFile(join(workspace.path, FILE_NAME), FILE_BODY)
+    // Both fixtures were created over real directories, so each declares a root.
+    const workspacePath = workspace.path!
+    await mkdir(join(workspacePath, '目录'))
+    await writeFile(join(workspacePath, FILE_NAME), FILE_BODY)
   }
-  const draft = structuredDraft(firstId, '切换工作区携带')
+  const draft = structuredDraft(firstId, '切换项目携带')
   await restoreStoredDrafts(page, [{ sessionId: firstId, draft }])
   await assertDraft(page, firstId, draft)
-  await page.getByRole('button', { name: 'Choose workspace', exact: true }).click()
+  await page.getByRole('button', { name: 'Choose project', exact: true }).click()
   await page.getByRole('menuitem', { name: second.title, exact: true }).click()
   await expect.poll(() => second.sessionIds.length, SETTLE).toBe(1)
   const secondId = second.sessionIds[0]!

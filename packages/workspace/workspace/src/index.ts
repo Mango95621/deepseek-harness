@@ -199,7 +199,12 @@ export class WorkspaceRegistry extends Service {
 
   private readonly host: WorkspaceEntityHost = {
     table: () => this.requireTable(),
-    candidateMatches: (id, path) => this.sessionPaths.get(id) === path || this.missingSessionPaths.has(id),
+    candidateMatches: (id, roots) => {
+      const known = this.sessionPaths.get(id)
+      // A Session whose root is no longer recorded still matches: the path is what is
+      // missing, not the Session, so its membership is decided by the absence set instead.
+      return known !== undefined ? roots.includes(known) : this.missingSessionPaths.has(id)
+    },
     readSessionHeader: id => this.readSessionHeader(id),
     sessionHeader: (id) => {
       const header = this.headers.get(id)
@@ -245,27 +250,115 @@ export class WorkspaceRegistry extends Service {
   }
 
   /**
-   * Create or reuse a workspace for an existing directory. The fully qualified
-   * path is canonicalized through `fs.realpath`; a relative, nonexistent, or
-   * non-directory path rejects. Repeated calls for the same canonical path
-   * return the existing entity without changing its title.
-   * A newly created workspace is prepended to the durable registry order.
-   * Different canonical paths may share a display title.
-   * @param path - Existing directory to own, in a fully qualified path spelling.
-   * @param title - Display title used only when a new record is created.
-   * @returns the existing or newly durable workspace.
+   * Create a project, optionally over one or more existing code-repository
+   * directories. Every fully qualified path is canonicalized through
+   * `fs.realpath`; a relative, nonexistent, or non-directory path rejects.
+   * The caller may pass one path or many: a single-root project is the common
+   * case, and a multi-root project is how one delivery unit tracks, say, an
+   * IVI application, MCU firmware, and a vendored AOSP tree together. The
+   * first path is the primary root and becomes the working directory of every
+   * session created against this project.
+   *
+   * An **empty** list creates a project with no repositories, which is the
+   * shape a client uses when it asks for the project's name first and its
+   * directories afterwards. Such a project carries a title but no primary
+   * root; see {@link Workspace.path}. A title is then required, because the
+   * primary root's final segment is the default title and there is none.
+   *
+   * Reuse matches on the **primary** root, so it applies only to a call that
+   * names one: repeated calls whose first path canonicalizes to an existing
+   * project's primary root return that project without changing its roots or
+   * title. A project with no roots is never reused this way — it has no path
+   * to match on — and a rootless call therefore always creates. A newly
+   * created project is prepended to the durable registry order. Different
+   * projects may share a display title.
+   * @param path - One existing directory, an array whose first entry is the primary
+   *   root, or an empty array for a project whose repositories are not declared yet.
+   * @param title - Display title; required when `path` is empty, since there is no root
+   *   to derive one from.
+   * @returns the existing or newly durable project.
    */
-  // TODO: `title` lost its last production caller when the gateway's
-  // create-by-name branch was deleted
-  // (.agents/notes/archived/simplification/2026-07-31-one-route-to-add-a-workspace.md);
-  // drop the parameter with its @param clause and the `create(path, title?)`
-  // lines in this package's README pair.
-  async create(path: string, title?: string): Promise<Workspace> {
+  async create(path: string | readonly string[], title?: string): Promise<Workspace> {
+    const requested = typeof path === 'string' ? [path] : path
+    // A blank title is no title at all: an empty string must not shadow the
+    // derivation from the primary root's final segment.
+    const named = title === undefined || title.trim().length === 0 ? undefined : title
+    if (requested.length === 0 && named === undefined) {
+      throw new TypeError('cannot create a project without a directory or a title')
+    }
+    const canonical = await this.canonicalRoots(requested)
+    return await this.enqueueOperation(() => this.createCanonical(canonical, named))
+  }
+
+  /**
+   * Canonicalize every declared root, rejecting a relative, nonexistent, or
+   * non-directory path, and rejecting an array that names the same directory
+   * twice (a duplicated root would make {@link Workspace.roots} ambiguous
+   * without adding reach).
+   * @param paths - Fully qualified directory spellings, primary first.
+   * @returns the canonical roots in the caller's order.
+   */
+  private async canonicalRoots(paths: readonly string[]): Promise<string[]> {
+    const out: string[] = []
+    for (const path of paths) {
+      const canonical = await realpathNormalize(path)
+      if (!(await stat(canonical)).isDirectory()) {
+        throw new Error(`cannot add '${canonical}' to a project: path is not a directory`)
+      }
+      if (out.includes(canonical)) {
+        throw new Error(`cannot add '${canonical}' to a project twice: a root must be declared once`)
+      }
+      out.push(canonical)
+    }
+    return out
+  }
+
+  /**
+   * Add one repository root to an existing project. The path is canonicalized
+   * like {@link create}; a root already declared by this project resolves
+   * without writing, and a primary-root match is left where it is (an added
+   * root always appends, so the primary never changes by accident).
+   * @param id - The project to extend.
+   * @param path - Existing directory to append as a root.
+   * @returns resolution after durability.
+   */
+  async addRoot(id: WorkspaceId, path: string): Promise<void> {
     const canonical = await realpathNormalize(path)
     if (!(await stat(canonical)).isDirectory()) {
-      throw new Error(`cannot create a workspace at '${canonical}': path is not a directory`)
+      throw new Error(`cannot add '${canonical}' to a project: path is not a directory`)
     }
-    return await this.enqueueOperation(() => this.createCanonical(canonical, title))
+    await this.enqueueOperation(async () => {
+      const entity = this.entities.get(id)
+      if (entity === undefined) throw new Error(`no project carries id '${id}'`)
+      if (entity.roots.includes(canonical)) return
+      await entity.setRoots([...entity.roots, canonical])
+    })
+  }
+
+  /**
+   * Remove one repository root from a project. Removing a root the project
+   * does not declare resolves without writing.
+   *
+   * Removing the **last** root leaves the project with none, which is the
+   * state it had before its first repository was declared: the project keeps
+   * its identity and its title and carries no working directory. Deleting the
+   * project is the separate operation for "no longer tracked" — dropping its
+   * directories is how a caller reconfigures which repositories it spans.
+   *
+   * Any session working in the removed root is detached by the same write, so
+   * the account never names a directory the project no longer declares.
+   * @param id - The project to narrow.
+   * @param path - Directory to drop.
+   * @returns resolution after durability.
+   */
+  async removeRoot(id: WorkspaceId, path: string): Promise<void> {
+    const canonical = await realpathNormalize(path)
+    await this.enqueueOperation(async () => {
+      const entity = this.entities.get(id)
+      if (entity === undefined) throw new Error(`no project carries id '${id}'`)
+      if (!entity.roots.includes(canonical)) return
+      await entity.setRoots(entity.roots.filter(root => root !== canonical))
+    })
   }
 
   /**
@@ -295,7 +388,7 @@ export class WorkspaceRegistry extends Service {
       const canonical = await realpathNormalize(path)
       // A Session can start outside the registry queue while directory preparation awaits I/O.
       if ((await this.listStoredHeaders()).length > 0 || sessions.list().length > 0) return undefined
-      return this.createCanonical(canonical, defaultWorkspaceTitle(path), true)
+      return this.createCanonical([canonical], defaultWorkspaceTitle(path), true)
     })
   }
 
@@ -525,31 +618,45 @@ export class WorkspaceRegistry extends Service {
 
   /**
    * Resolve by canonical directory path without creating or mutating a
-   * workspace. A missing path rejects during `realpath`; an existing unowned
-   * directory returns `undefined`.
+   * project. A missing path rejects during `realpath`; an existing unowned
+   * directory returns `undefined`. A path matching any declared root resolves
+   * — including a secondary root, so a caller holding an MCU-firmware path
+   * still finds the project whose primary root is the IVI application.
    * @param path - Existing directory path in a fully qualified spelling.
-   * @returns the workspace owning the canonical path, when one exists.
+   * @returns the project declaring the canonical path as one of its roots, when one exists.
    */
   async resolveByPath(path: string): Promise<Workspace | undefined> {
     const canonical = await realpathNormalize(path)
     for (const entity of this.entities.values()) {
-      if (entity.path === canonical) return entity
+      if (entity.roots.includes(canonical)) return entity
     }
     return undefined
   }
 
-  private async createCanonical(canonical: string, title?: string, firstUse = false): Promise<WorkspaceEntity> {
-    for (const entity of this.entities.values()) {
-      if (entity.path === canonical) return entity
+  private async createCanonical(roots: readonly string[], title?: string, firstUse = false): Promise<WorkspaceEntity> {
+    const primary = roots[0]
+    // Reuse is a property of a *named* root: a project is the same project when
+    // the caller names a directory it already owns. A rootless call has nothing
+    // to match on and always creates, which is what lets a client ask for a
+    // fresh, not-yet-configured project.
+    if (primary !== undefined) {
+      for (const entity of this.entities.values()) {
+        if (entity.path === primary) return entity
+      }
     }
 
-    const workspaceName = title ?? defaultWorkspaceTitle(canonical)
+    // The title is the project's own identity when no root supplies one, so it
+    // is read from the caller rather than derived. `create` rejects the call
+    // that would leave both absent, so this fallback never actually recurses
+    // into an empty spelling: it exists only to keep the derivation total.
+    /* v8 ignore next -- create() rejects the call that would leave both absent. */
+    const workspaceName = title ?? defaultWorkspaceTitle(primary ?? '')
     const table = this.requireTable()
     const state = this.requireState()
     const id = brandString<WorkspaceId>(randomUUID())
     const now = new Date().toISOString()
     const record: WorkspaceRecord = {
-      path: canonical,
+      roots: [...roots],
       title: workspaceName,
       sessionIds: [],
       createdAt: now,
@@ -699,7 +806,9 @@ export class WorkspaceRegistry extends Service {
     const byPath = new Map<string, WorkspaceId>()
     const accounted = new Map<SessionId, WorkspaceId>()
     for (const [id, record] of table.entries()) {
-      byPath.set(record.path, id)
+      // Every declared root resolves to its project, so a session whose cwd sits
+      // in a secondary root rejoins the project instead of spawning a new one.
+      for (const root of record.roots) byPath.set(root, id)
       for (const sessionId of record.sessionIds) accounted.set(sessionId, id)
     }
 
@@ -713,7 +822,7 @@ export class WorkspaceRegistry extends Service {
         id = brandString<WorkspaceId>(randomUUID())
         const createdAt = new Date(group.newestAt).toISOString()
         const record: WorkspaceRecord = {
-          path: group.path,
+          roots: [group.path],
           title: defaultWorkspaceTitle(group.path),
           sessionIds,
           createdAt,
@@ -747,8 +856,10 @@ export class WorkspaceRegistry extends Service {
     const priorRank = new Map(state.workspaceIds.map((id, index) => [id, index]))
     const workspaceIds = [...table.entries()]
       .sort(([leftId, left], [rightId, right]) => {
-        const leftTime = groupRank.get(left.path) ?? Date.parse(left.createdAt)
-        const rightTime = groupRank.get(right.path) ?? Date.parse(right.createdAt)
+        // A project with no repository root yet has no summary row to rank by, so it
+        // falls back to its own creation time like a root-less group already does.
+        const leftTime = groupRank.get(left.roots[0] ?? '') ?? Date.parse(left.createdAt)
+        const rightTime = groupRank.get(right.roots[0] ?? '') ?? Date.parse(right.createdAt)
         return rightTime - leftTime
           || (priorRank.get(leftId) ?? Number.MAX_SAFE_INTEGER)
             - (priorRank.get(rightId) ?? Number.MAX_SAFE_INTEGER)
@@ -794,14 +905,16 @@ export class WorkspaceRegistry extends Service {
     const paths = new Map<string, WorkspaceId>()
     const accounted = new Map<SessionId, WorkspaceId>()
     for (const [id, record] of table.entries()) {
-      const pathHolder = paths.get(record.path)
-      if (pathHolder !== undefined) {
-        throw new Error(
-          `workspace domain is inconsistent: path '${record.path}' is claimed `
-          + `by both workspace '${pathHolder}' and workspace '${id}'`,
-        )
+      for (const root of record.roots) {
+        const pathHolder = paths.get(root)
+        if (pathHolder !== undefined) {
+          throw new Error(
+            `workspace domain is inconsistent: root '${root}' is claimed `
+            + `by both project '${pathHolder}' and project '${id}'`,
+          )
+        }
+        paths.set(root, id)
       }
-      paths.set(record.path, id)
       for (const sessionId of record.sessionIds) {
         const holder = accounted.get(sessionId)
         if (holder !== undefined) {
@@ -876,14 +989,14 @@ export class WorkspaceRegistry extends Service {
     for (const entity of this.entities.values()) {
       const record = this.requireTable().get(entity.id) as WorkspaceRecord
       for (const sessionId of record.sessionIds) {
-        if (this.host.candidateMatches(sessionId, record.path)) continue
+        if (this.host.candidateMatches(sessionId, record.roots)) continue
         const path = this.sessionPaths.get(sessionId)
         const reason = this.invalidSessionPaths.get(sessionId)
           ?? (this.headers.has(sessionId)
-            ? `canonical cwd '${path}' differs from workspace path '${record.path}'`
+            ? `canonical cwd '${path}' is none of the project's ${record.roots.length} root(s)`
             : 'session header is missing')
         this.ctx.logger.warn(
-          `workspace '${entity.id}' filtered session '${sessionId}' from membership: ${reason}`,
+          `project '${entity.id}' filtered session '${sessionId}' from membership: ${reason}`,
         )
       }
     }

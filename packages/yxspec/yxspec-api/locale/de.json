@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "YXSpec-Remote-Schnittstelle",
+    "description": "Stellt das ASPICE-Stufenmodell und den Stufenstatus dem Desktop-Client als Namensraum yxspec bereit."
+  }
+}

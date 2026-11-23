@@ -80,7 +80,7 @@ export function createUploadRoute(handler: UploadRouteHandler): (request: Reques
       const workspace = handler.workspace(workspaceId)
       if (workspace === undefined) {
         await request.body?.cancel()
-        return failure('workspace-not-found', `workspace ${workspaceId} does not exist`)
+        return failure('workspace-not-found', `workspace ${workspaceId} does not exist or declares no repository root`)
       }
       const cancel = new AbortController()
       const signal = AbortSignal.any([claim.signal, request.signal, cancel.signal])

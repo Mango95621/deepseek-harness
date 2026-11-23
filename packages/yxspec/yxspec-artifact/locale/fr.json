@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Registre d’artefacts YXSpec",
+    "description": "Conserve le registre d’artefacts sur disque qui décide si une étape du flux est terminée."
+  }
+}

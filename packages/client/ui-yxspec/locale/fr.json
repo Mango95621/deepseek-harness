@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Panneau de processus YXSpec",
+    "description": "Affiche le modèle d’étapes ASPICE et l’état d’arrivée des artefacts de chaque étape depuis l’espace de noms distant yxspec."
+  }
+}

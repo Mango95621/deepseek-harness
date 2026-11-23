@@ -12,7 +12,6 @@ import type {
   InjectFace, PropsLocale, PropsRenderFactories, PropsRenderSlots, PropsRuntime, SlotHookFactory,
 } from '@deepseek-ai/dsh-client-ui-slots'
 import type { ObservableSnapshot } from '@deepseek-ai/dsh-client-store'
-import type { WorkspaceId } from '@deepseek-ai/dsh-api-workspace-controller/client'
 import type { ShortcutCatalogEntry } from '@deepseek-ai/dsh-client-shortcuts/client'
 import type { MainPanelId } from '@deepseek-ai/dsh-client-ui-layout/client'
 import type { ProductEventMap } from '@deepseek-ai/dsh-client-product-analytics/client'
@@ -74,14 +73,12 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
      */
     'sidebar.footer.action': { kind: 'list'; scope: 'root'; owner: SidebarFooterActionOwnerProps }
     /**
-     * HOC layer around the inner content of the New-session row — the Tooltip
-     * and button the shell passes as `children`, rendered only while the Peer
-     * may create Sessions. An occupant receives that content and returns it,
-     * possibly wrapped, together with its own controls, so it decorates the
-     * row without adding a wrapper element. Occupants nest around the content
-     * instead of rendering beside it: one that adds nothing must return
-     * `children`, and with no occupant the content renders unchanged.
-     * Declared by this package's 'sidebar' entry.
+     * Optional contributions filling the seat below the brand row. The shell
+     * itself renders no New-session control — starting a Session is the
+     * workspace browser's own per-project action — so this row exists only
+     * while some plugin occupies the slot. Declared by this package's
+     * 'sidebar' entry; an occupant receives `children: null` and owns the
+     * whole row, and with no occupant the shell renders no row at all.
      */
     'sidebar.session.action': { kind: 'hoc'; scope: 'root'; owner: SidebarSessionActionOwnerProps }
   }
@@ -211,12 +208,6 @@ export interface SidebarSessionActionOwnerProps {
  * factory). The renderer binds the panel metadata source to usePanels.
  */
 export type SidebarRootInjected = {
-  /**
-   * Start a New Session: with a workspace, reuse-or-create its blank session
-   * and open it; without one, inherit the current Session Workspace, then the
-   * recent Workspace, or clear into the New Session pure view when none exist.
-   */
-  startSession: (workspaceId?: WorkspaceId) => void
   /** Toggle the sidebar column through the layout service. */
   toggleSidebar: () => void
   /** Select the global panel addressed by a sidebar row. */
@@ -237,6 +228,8 @@ export type SidebarRootInjected = {
     entryPins: ObservableSnapshot<readonly string[]>
     /** Whether `sidebar.panellist.actions` has registrations. */
     entryActions: ObservableSnapshot<boolean>
+    /** Whether `sidebar.session.action` has an occupant, so its row exists at all. */
+    sessionActions: ObservableSnapshot<boolean>
   }
 }
 

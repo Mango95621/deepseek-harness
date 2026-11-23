@@ -26,7 +26,7 @@
   },
   {
     "id": "search",
-    "prompt": "我想让你帮我找回这个工作区以前会话里讨论过的方案，有什么现成功能？",
+    "prompt": "我想让你帮我找回这个项目以前会话里讨论过的方案，有什么现成功能？",
     "expected": "Look up the catalog, offer exactly one matching session-search card, explain its actual scope, and do not enable or edit files before the user acts."
   },
   {

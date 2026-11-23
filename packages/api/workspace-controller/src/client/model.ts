@@ -5,6 +5,7 @@ import type {} from '@deepseek-ai/dsh-api-workspace-controller/remote'
 import { isRemoteFailure } from '@deepseek-ai/dsh-api-gateway/client'
 import type { RemoteFailure, RemoteResult, TypertClientRemote } from '@deepseek-ai/dsh-typert-protocol'
 import type {
+  WorkspaceAddRootRequest,
   WorkspaceArchiveSessionRequest,
   WorkspaceArchiveValue,
   WorkspaceBaseline,
@@ -15,6 +16,7 @@ import type {
   WorkspaceOrderValue,
   WorkspacePinSessionRequest,
   WorkspacePinValue,
+  WorkspaceRemoveRootRequest,
   WorkspaceUnarchiveSessionRequest,
   WorkspaceUnpinSessionRequest,
   WorkspaceValue,
@@ -92,11 +94,40 @@ export class ClientWorkspaceModel implements WorkspaceFollowSink {
 
   /**
    * Create or resolve a Workspace and merge the unary result immediately.
-   * @param input - existing absolute path to adopt.
+   *
+   * Passing no directory creates the project from its title alone, with no
+   * repository root; the wizard then attaches roots through {@link addRoot}.
+   * @param input - directories to adopt, or a title alone.
    * @returns generated Remote result.
    */
   async create(input: WorkspaceCreateRequest): Promise<RemoteResult<WorkspaceCreateValue>> {
     const result = await this.remote.create(input)
+    if (result.ok) this.upsert(result.value.workspace)
+    return result
+  }
+
+  /**
+   * Append a repository root to a project and merge the returned row.
+   *
+   * The added root is never promoted to primary, so the project's working
+   * directory stays what it was — the property a wizard needs when the user
+   * picks a second repository after the first.
+   * @param input - project identity and the directory to append.
+   * @returns generated Remote result.
+   */
+  async addRoot(input: WorkspaceAddRootRequest): Promise<RemoteResult<WorkspaceValue>> {
+    const result = await this.remote.addRoot(input)
+    if (result.ok) this.upsert(result.value.workspace)
+    return result
+  }
+
+  /**
+   * Drop a repository root from a project and merge the returned row.
+   * @param input - project identity and the directory to drop.
+   * @returns generated Remote result.
+   */
+  async removeRoot(input: WorkspaceRemoveRootRequest): Promise<RemoteResult<WorkspaceValue>> {
+    const result = await this.remote.removeRoot(input)
     if (result.ok) this.upsert(result.value.workspace)
     return result
   }

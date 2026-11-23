@@ -13,6 +13,11 @@
  * Through the browser's hookContext, the shell also hands it the scroller hook
  * that continues wheel scrolling over the sidebar viewport into its list.
  *
+ * The shell renders no New Session control of its own: starting a Session is
+ * the workspace browser's per-project action, so the seat below the brand row
+ * hosts only what a plugin contributes through `sidebar.session.action` and
+ * the brand row is identity only.
+ *
  * The column also owns whether the scroll regions nested in it draw a
  * scrollbar at all: the shell tracks the pointer and rebinds ui-theme's
  * scrollbar indirection away while it is elsewhere, so a list the user is not
@@ -22,8 +27,8 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import type { PointerEvent as ReactPointerEvent } from 'react'
 import clsx from 'clsx'
 import {
-  FishLogo, IconAppsAddOutlineRegular, IconNewChatOutlineMedium, IconNewChatOutlineRegular,
-  IconPanelLeftOutlineRegular, IconPinFillRegular, focusWithoutRing, isBehindModal, isDarwinDesktop, Menu, ShortcutKeys, Toast,
+  FishLogo, IconAppsAddOutlineRegular,
+  IconPanelLeftOutlineRegular, IconPinFillRegular, focusWithoutRing, isBehindModal, isDarwinDesktop, Menu, Toast,
   Tooltip, useModalLayer, writeClipboard,
 } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { InjectFace, PropsRenderFactories, PropsRenderSlots, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
@@ -145,15 +150,14 @@ export function SidebarRoot({
   collapsed,
   width,
   drawer,
-  startSession,
   toggleSidebar,
   selectPanel,
   setPinned,
   trackEntryClick,
-  useRemoteAccess,
   usePanels,
   useEntryPins,
   useEntryActions,
+  useSessionActions,
   useShortcuts,
   usePanelInfo,
   t,
@@ -164,10 +168,8 @@ export function SidebarRoot({
   const unpinned = useEntryPins(ids => ids)
   const activePanelId = usePanelInfo(info => info.activePanelId)
   const hasEntryActions = useEntryActions(registered => registered)
+  const hasSessionActions = useSessionActions(registered => registered)
   const shortcut = useShortcuts(rows => rows.find(row => row.id === 'sidebar.left.toggle'))
-  const newShortcut = useShortcuts(rows => rows.find(row => row.id === 'session.new'))
-  // A page whose access snapshot excludes starting a Session offers no New Session affordance.
-  const canStartSession = useRemoteAccess('session/create')
   const toggleLabel = collapsed ? t('toggle.open') : t('toggle.collapse')
   // Wide content stays mounted while the collapse animates (fading via
   // .collapsed .wide), unmounts at settle, and remounts right away on expand.
@@ -184,14 +186,9 @@ export function SidebarRoot({
   const sectionHookContext = useMemo<SidebarSectionHookContext>(
     () => ({ useSectionScroller: scrollHandoff.useSectionScroller }), [scrollHandoff],
   )
-  // The Windows titlebar hosts the New Session controls while the sidebar is collapsed.
-  const openNewSession = (): void => {
-    trackEntryClick({ menu_name: 'new_session', position: windowsTitlebar && collapsed ? 'titlebar' : 'sidebar' })
-    startSession()
-  }
-  // The Windows caption menus occupy the strip to the right of these controls
-  // (that is what --dsh-windows-menu-start reserves), so a right-side bubble
-  // lands under their text. Below the caption is the only clear side.
+  // The Windows caption menus occupy the strip to the right of the rail's
+  // controls (that is what --dsh-windows-menu-start reserves), so a right-side
+  // bubble lands under their text. Below the caption is the only clear side.
   const captionTooltipSide = windowsTitlebar ? 'bottom' : 'right'
   // Freeze the content at its expanded width while it fades out (collapsed
   // && wide): the sliding column then clips it instead of reflowing it. The
@@ -294,14 +291,14 @@ export function SidebarRoot({
           traffic lights and keeps the toggle at the sidebar's top-right. */}
       {darwinDesktop && <div className={css.topStrip} data-window-drag>{toggle}</div>}
       <div className={css.logoRow} data-window-drag>
-        {/* Expanded, the brand doubles as a New Session shortcut while the
-            access snapshot allows `session/create` — except on
-            macOS, where it stays part of the logo row's window-drag surface
-            (the drag-row controls rule would subtract a button);
-            the collapsed rail's logo is the expand toggle below instead.
-            Mouse clicks on the local-build fallbacks copy the version instead. */}
-        {wide && (() => {
-          const identity = (
+        {/* The brand row is identity only. Starting a Session is the workspace
+            browser's own per-project control, never a shell affordance, so the
+            brand stays part of the logo row's window-drag surface on every
+            platform; the collapsed rail's logo is the expand toggle below
+            instead. Mouse clicks on the local-build fallbacks copy the version
+            instead. */}
+        {wide && (
+          <span className={clsx(css.brand, css.wide)}>
             <span className={css.brandIdentity} aria-hidden="true">
               <span className={css.brandMark}>
                 {renderSlot('sidebar.brand.mark', { size: 24 }, {
@@ -323,53 +320,20 @@ export function SidebarRoot({
                 })}
               </span>
             </span>
-          )
-          return darwinDesktop || !canStartSession
-            ? <span className={clsx(css.brand, css.wide)}>{identity}</span>
-            : (
-              <button
-                type="button"
-                className={clsx(css.brand, css.wide)}
-                aria-label={t('session.new.label')}
-                aria-keyshortcuts={newShortcut?.aria}
-                onClick={(event) => {
-                  if ((event.target as Element).closest('[data-copy-version]') !== null) return
-                  openNewSession()
-                }}
-              >
-                {identity}
-              </button>
-            )
-        })()}
+          </span>
+        )}
         {!darwinDesktop && toggle}
       </div>
 
-      {/* The label fades before the hover/focus shortcut, including on translucent backgrounds. */}
-      {canStartSession && (
-        <div className={css.newSessionRow}>
-          {renderSlot('sidebar.session.action', { wide }, {
-            children: (
-              <Tooltip label={t('session.new.label')} shortcutKeys={newShortcut?.keys} delayMs={500} side={captionTooltipSide} disabled={wide}>
-                <button
-                  type="button"
-                  className={css.newSession}
-                  aria-label={t('session.new.label')}
-                  aria-keyshortcuts={newShortcut?.aria}
-                  onClick={openNewSession}
-                >
-                  <span className={css.newSessionLabelMask}><span className={css.newSessionContent}>
-                    {wide
-                      ? <IconNewChatOutlineMedium size={14} />
-                      : <IconNewChatOutlineRegular size={windowsTitlebar ? 16 : 18} />}
-                    {wide && <span className={clsx(css.newSessionLabel, css.wide)}>{t('session.new')}</span>}
-                  </span></span>
-                  {wide && newShortcut !== undefined && newShortcut.keys.length > 0 && <span className={css.newSessionShortcut} aria-hidden="true">
-                    <ShortcutKeys keys={newShortcut.keys} />
-                  </span>}
-                </button>
-              </Tooltip>
-            ),
-          })}
+      {/* The shell offers no New Session control: starting a Session is the
+          workspace browser's own per-project action, which keeps the operator's
+          intended project in view instead of guessing one. The
+          `sidebar.session.action` seat therefore hosts only what a plugin
+          contributes — with no occupant the row is absent rather than empty,
+          so nothing renders a dead control here. */}
+      {hasSessionActions && (
+        <div className={css.sessionActionRow}>
+          {renderSlot('sidebar.session.action', { wide }, { children: null })}
         </div>
       )}
 

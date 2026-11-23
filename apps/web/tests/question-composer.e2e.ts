@@ -21,7 +21,8 @@ import {
   launchWebScaffold, recordFixture, seedSession, watchConsole, webSnapshotMode, type WebScaffold,
 } from './scaffold.ts'
 import {
-  connectFreshWorkspace, expandTurnProcesses, newEnglishPage, pinBrowserClock, pinHostClock, saveFailureShot, WEB_FIXTURE_TIME,
+  connectFreshWorkspace, expandTurnProcesses, newEnglishPage, pinBrowserClock, pinHostClock, saveFailureShot,
+  startSessionIn, WEB_FIXTURE_TIME,
 } from './support.ts'
 
 const SNAPSHOT_DIR = fileURLToPath(new URL('../../../snapshots/web/question-composer', import.meta.url))
@@ -504,14 +505,14 @@ describe('web e2e: resident question composer round trip', () => {
       expect(await page.getByRole('button', { name: 'Answer', exact: true }).count()).toBe(0)
 
       // A strict Session-slot switch remounts the composer. Open a fresh blank
-      // Session, then return to the still-waiting request and require its
-      // Session-scoped store to restore both option and free-text drafts.
+      // Session from the project row's own action, then return to the
+      // still-waiting request and require its Session-scoped store to restore
+      // both option and free-text drafts.
       const originalRow = page.locator('[role="treeitem"]')
         .filter({ hasText: 'Use the ask_user_question tool' }).first()
-      await page.getByRole('button', { name: 'New session', exact: true }).last().click()
-      // Scope to the tree: the wide sidebar's New Session button carries the
-      // same visible label, and an unscoped match would either settle on the
-      // button before the row exists or trip strict mode once it does.
+      await startSessionIn(page, 'workspace')
+      // Scope to the tree: the created Session's row carries the blank title,
+      // which is what proves the switch landed.
       await page.getByRole('tree', { name: 'Sessions' })
         .getByText('New Session', { exact: true }).waitFor({ timeout: 15_000 })
       await expect.poll(() => composer.count(), { timeout: 10_000 }).toBe(0)

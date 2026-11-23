@@ -129,7 +129,7 @@ describe.skipIf(mode === 'record')('web e2e: workspace shortcuts', () => {
     expect(scaffold.ctx.workspaceRegistry.archivedSessionIds).not.toContain(sourceId)
     expect((await readPersistedEvents(scaffold, sourceId)).length).toBeGreaterThan(0)
 
-    await bind('Add workspace')
+    await bind('Add project')
     await page.keyboard.press('Meta+Shift+Comma')
     const picker = page.getByRole('dialog', { name: 'Select Workspace Directory', exact: true })
     await picker.waitFor()
@@ -142,11 +142,13 @@ describe.skipIf(mode === 'record')('web e2e: workspace shortcuts', () => {
     await picker.waitFor({ state: 'hidden' })
     await expect.poll(() => scaffold.ctx.workspaceRegistry.resolveByPath(join(scaffold.workspaceCwd, 'keyboard-project'))).toBeDefined()
     const workspace = (await scaffold.ctx.workspaceRegistry.resolveByPath(join(scaffold.workspaceCwd, 'keyboard-project')))!
+    // The picker adopted a real directory, so this Workspace declares a root.
+    const workspacePath = workspace.path!
 
-    const workspaceLabel = basename(workspace.path)
+    const workspaceLabel = basename(workspacePath)
     const workspaceRow = page.locator('[role="treeitem"][aria-expanded]')
       .filter({ has: page.getByText(workspaceLabel, { exact: true }) })
-    const details = page.getByRole('button', { name: `Copy: ${workspace.path}`, exact: true })
+    const details = page.getByRole('button', { name: `Copy: ${workspacePath}`, exact: true })
     await workspaceRow.getByText(workspaceLabel, { exact: true }).hover()
     await details.waitFor()
     await workspaceRow.getByRole('button', { name: `New session in ${workspaceLabel}`, exact: true }).hover()
@@ -176,7 +178,7 @@ describe.skipIf(mode === 'record')('web e2e: workspace shortcuts', () => {
 
     await bind('Open locally')
     await page.keyboard.press('Meta+Shift+Comma')
-    await expect.poll(() => launched).toEqual([{ app: 'vscode', path: workspace.path }])
+    await expect.poll(() => launched).toEqual([{ app: 'vscode', path: workspacePath }])
 
     await page.keyboard.press('Meta+Alt+P')
     const files = page.locator('[data-files-page]')
@@ -189,16 +191,16 @@ describe.skipIf(mode === 'record')('web e2e: workspace shortcuts', () => {
       .toEqual(['reload', 'search', 'open'])
     await opener.getByRole('button', { name: 'Open in VS Code', exact: true }).click()
     await expect.poll(() => launched).toEqual([
-      { app: 'vscode', path: workspace.path }, { app: 'vscode', path: workspace.path },
+      { app: 'vscode', path: workspacePath }, { app: 'vscode', path: workspacePath },
     ])
     await opener.getByRole('button', { name: 'More ways to open', exact: true }).click()
     await page.getByRole('menuitem', { name: 'Finder', exact: true }).click()
-    await expect.poll(() => launched.at(-1)).toEqual({ app: 'finder', path: workspace.path })
+    await expect.poll(() => launched.at(-1)).toEqual({ app: 'finder', path: workspacePath })
     await opener.getByRole('button', { name: 'Open in Finder', exact: true }).waitFor()
     await page.keyboard.press('Meta+Shift+Comma')
     await expect.poll(() => launched).toEqual([
-      { app: 'vscode', path: workspace.path }, { app: 'vscode', path: workspace.path },
-      { app: 'finder', path: workspace.path }, { app: 'finder', path: workspace.path },
+      { app: 'vscode', path: workspacePath }, { app: 'vscode', path: workspacePath },
+      { app: 'finder', path: workspacePath }, { app: 'finder', path: workspacePath },
     ])
     await expect.poll(() => opener.getAttribute('data-state')).toBe('idle')
     await compareOrRefreshGolden(join(root, 'files-open.expected.md'),

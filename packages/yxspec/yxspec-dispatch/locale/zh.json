@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "YXSpec 盲派发",
+    "description": "渲染 worker 角色提示词并计算哈希后派发，控制器不读取正文。"
+  }
+}

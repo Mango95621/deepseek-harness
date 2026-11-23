@@ -163,6 +163,10 @@
     "@deepseek-ai/dsh-workflow-ptc": "workspace:*",
     "@deepseek-ai/dsh-working-directory": "workspace:*",
     "@deepseek-ai/dsh-workspace": "workspace:*",
+    "@deepseek-ai/dsh-yxspec": "workspace:*",
+    "@deepseek-ai/dsh-yxspec-artifact": "workspace:*",
+    "@deepseek-ai/dsh-yxspec-remote": "workspace:*",
+    "@deepseek-ai/dsh-yxspec-step": "workspace:*",
     "@deepseek-ai/schemastery": "workspace:~"
   }
 }

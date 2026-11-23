@@ -4,7 +4,7 @@ import { Service, type Context } from '@deepseek-ai/cordis'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import type { RemoteFailure } from '@deepseek-ai/dsh-typert-protocol'
 import type { WorkspaceId } from '@deepseek-ai/dsh-workspace/types'
-import type { WorkspaceView } from '../types.ts'
+import type { WorkspaceCreateRequest, WorkspaceView } from '../types.ts'
 import type { ClientWorkspaceModel, WorkspaceSnapshot } from './model.ts'
 
 /** Structured create failure for callers that distinguish Host business errors. */
@@ -48,11 +48,33 @@ export interface IWorkspaces {
   /** Host-authoritative Workspace rows, order, archive set, and follow lifecycle. */
   readonly list: WorkspaceSource
   /**
-   * Register an existing path as a Workspace.
-   * @param input - Host create payload.
+   * Register one or more existing directories as a project, or create a project
+   * from a name alone.
+   *
+   * A single directory is the common case; several declare a multi-repository
+   * project, whose first entry is the primary root and thus the working
+   * directory of the project's sessions. Passing neither `path` nor `roots`
+   * creates a project whose repositories are attached afterwards through
+   * {@link addRoot}; `title` is then required, since it is the only identity
+   * the project has.
+   * @param input - Host create payload: one directory, the root list, or a title alone.
    * @returns the created or idempotently resolved Workspace.
    */
-  create(input: { path: string }): Promise<WorkspaceView>
+  create(input: WorkspaceCreateRequest): Promise<WorkspaceView>
+  /**
+   * Append a repository root to an existing project.
+   * @param workspaceId - project to extend.
+   * @param path - existing directory to append as a non-primary root.
+   * @returns the updated project.
+   */
+  addRoot(workspaceId: WorkspaceId, path: string): Promise<WorkspaceView>
+  /**
+   * Drop a repository root from a project.
+   * @param workspaceId - project to shrink.
+   * @param path - directory to drop.
+   * @returns the updated project.
+   */
+  removeRoot(workspaceId: WorkspaceId, path: string): Promise<WorkspaceView>
   /**
    * Initialize or reuse the default Workspace.
    * @param signal - caller lifetime.
@@ -127,9 +149,21 @@ export class WorkspaceController extends Service implements IWorkspaces {
     this.list = model
   }
 
-  async create(input: { path: string }): Promise<WorkspaceView> {
+  async create(input: WorkspaceCreateRequest): Promise<WorkspaceView> {
     const result = await this.model.create(input)
     if (!result.ok) throw new WorkspaceCreateError(result.error)
+    return result.value.workspace
+  }
+
+  async addRoot(workspaceId: WorkspaceId, path: string): Promise<WorkspaceView> {
+    const result = await this.model.addRoot({ workspaceId, path })
+    if (!result.ok) throw commandError('root add', result.error)
+    return result.value.workspace
+  }
+
+  async removeRoot(workspaceId: WorkspaceId, path: string): Promise<WorkspaceView> {
+    const result = await this.model.removeRoot({ workspaceId, path })
+    if (!result.ok) throw commandError('root remove', result.error)
     return result.value.workspace
   }
 

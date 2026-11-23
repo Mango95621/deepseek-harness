@@ -13,7 +13,7 @@ import RemoteAccessService, { type RemoteAccessCondition, type RemoteAccessRole 
 import WorkspaceController from '../src/index.ts'
 import { DEFAULT_WORKSPACE_DIRECTORY } from '../src/default-workspace.ts'
 import { WorkspaceFeed } from '../src/feed.ts'
-import type { WorkspaceFollowFrame } from '../src/types.ts'
+import type { WorkspaceFollowFrame, WorkspaceView } from '../src/types.ts'
 import { MemoryStorageBackend } from '../../../storage/storage-domain/tests/helpers/memory-backend.ts'
 import { brandString } from '@deepseek-ai/dsh-brand'
 
@@ -108,6 +108,17 @@ function stageDir(root: string, name: string): string {
   return path
 }
 
+/**
+ * The working directory of a projected Workspace, for fixtures that created one
+ * over a named directory and therefore always have a primary root.
+ * @param workspace - a projection returned by `create` over a real directory.
+ * @returns the canonical primary root.
+ */
+function cwdOf(workspace: WorkspaceView): string {
+  if (workspace.path === null) throw new Error('fixture Workspace declared no repository root')
+  return workspace.path
+}
+
 async function nextFrame(
   iterator: AsyncIterator<WorkspaceFollowFrame>,
 ): Promise<WorkspaceFollowFrame> {
@@ -135,6 +146,102 @@ describe('WorkspaceController commands', () => {
     await expect(controller.create({ path })).resolves.toMatchObject({
       created: false,
       workspace: { workspaceId, title: 'renamed' },
+    })
+  })
+
+  it('creates a project from its name alone and requires one of a directory or a title', async () => {
+    const { controller, ctx, root } = await harness()
+
+    const named = await controller.create({ title: '  Vehicle platform  ' })
+    expect(named.created).toBe(true)
+    // No directory was named, so the project declares no root and carries the
+    // trimmed title as its only identity.
+    expect(named.workspace).toMatchObject({ path: null, roots: [], title: 'Vehicle platform' })
+
+    // A second rootless call is a different project: there is no path to
+    // resolve a reuse against.
+    const again = await controller.create({ title: 'Vehicle platform' })
+    expect(again.created).toBe(true)
+    expect(again.workspace.workspaceId).not.toBe(named.workspace.workspaceId)
+
+    // Neither a directory nor a usable title is a caller error, refused before
+    // the queue and before anything is written.
+    for (const request of [{}, { title: '   ' }, { roots: [] }]) {
+      await expect(controller.create(request)).rejects.toMatchObject({
+        code: 'gateway/bad-request',
+        message: expect.stringContaining('directory path') as string,
+      })
+    }
+
+    // A rooted create still reuses on its path and ignores the absent title.
+    const path = stageDir(root, 'rooted')
+    const rooted = await controller.create({ path })
+    expect(rooted.workspace).toMatchObject({ path, roots: [path] })
+    await expect(controller.create({ path })).resolves.toMatchObject({ created: false })
+
+    // A rooted call whose registry write fails reports the path it named.
+    vi.spyOn(ctx.workspaceRegistry, 'create').mockRejectedValueOnce(new Error('disk full'))
+    const failingPath = stageDir(root, 'rooted-failure')
+    await expect(controller.create({ path: failingPath })).rejects.toMatchObject({
+      code: 'workspace/invalid-path',
+      details: { path: failingPath },
+      message: `cannot create a project at "${failingPath}": disk full`,
+    })
+
+    // A rootless call whose create fails names the title instead, since it has
+    // no path to quote.
+    vi.spyOn(ctx.workspaceRegistry, 'create').mockRejectedValueOnce(new Error('disk full'))
+    await expect(controller.create({ title: 'Unwritable' })).rejects.toMatchObject({
+      code: 'workspace/invalid-path',
+      details: { path: 'Unwritable' },
+      message: 'cannot create a project named "Unwritable": disk full',
+    })
+  })
+
+  it('appends and drops repository roots, mapping refusals to one stable failure', async () => {
+    const { controller, ctx, root } = await harness()
+    const project = await controller.create({ title: 'Vehicle platform' })
+    const id = project.workspace.workspaceId
+    const ivi = stageDir(root, 'ivi')
+    const mcu = stageDir(root, 'mcu')
+
+    // The first root added to a rootless project becomes its primary root.
+    await expect(controller.addRoot({ workspaceId: id, path: ivi }))
+      .resolves.toMatchObject({ workspace: { path: ivi, roots: [ivi] } })
+    // The next one appends without moving the primary.
+    await expect(controller.addRoot({ workspaceId: id, path: mcu }))
+      .resolves.toMatchObject({ workspace: { path: ivi, roots: [ivi, mcu] } })
+
+    // Dropping the primary leaves the secondary in place: the registry appends
+    // rather than promoting, so the surviving root keeps its position.
+    await expect(controller.removeRoot({ workspaceId: id, path: ivi }))
+      .resolves.toMatchObject({ workspace: { path: mcu, roots: [mcu] } })
+    // Dropping the last root is allowed and returns the project to its
+    // named-but-unconfigured shape.
+    await expect(controller.removeRoot({ workspaceId: id, path: mcu }))
+      .resolves.toMatchObject({ workspace: { path: null, roots: [] } })
+
+    // Both commands refuse an unknown project through the shared not-found map.
+    await expect(controller.addRoot({ workspaceId: 'missing' as WorkspaceId, path: ivi }))
+      .rejects.toMatchObject({ code: 'workspace/not-found' })
+    await expect(controller.removeRoot({ workspaceId: 'missing' as WorkspaceId, path: ivi }))
+      .rejects.toMatchObject({ code: 'workspace/not-found' })
+
+    // A directory the registry refuses becomes the one stable root failure,
+    // naming both the project and the offending path.
+    await expect(controller.addRoot({ workspaceId: id, path: join(root, 'absent') }))
+      .rejects.toMatchObject({
+        code: 'workspace/root-invalid',
+        details: { workspaceId: id, path: join(root, 'absent') },
+        message: expect.stringContaining(`cannot add root "${join(root, 'absent')}" to project "Vehicle platform"`) as string,
+      })
+    // Removal has no directory guard of its own, so a failure there can only
+    // come from the write; the mapping is the same shape.
+    vi.spyOn(ctx.workspaceRegistry, 'removeRoot').mockRejectedValueOnce(new Error('storage down'))
+    await expect(controller.removeRoot({ workspaceId: id, path: ivi })).rejects.toMatchObject({
+      code: 'workspace/root-invalid',
+      details: { workspaceId: id, path: ivi },
+      message: `cannot remove root "${ivi}" from project "Vehicle platform": storage down`,
     })
   })
 
@@ -245,7 +352,7 @@ describe('WorkspaceController commands', () => {
       .rejects.toMatchObject({ code: 'workspace/not-found' })
 
     const session = ctx.sessions.create(brandString<SessionId>('session-one'), {
-      meta: { cwd: first.workspace.path },
+      meta: { cwd: cwdOf(first.workspace) },
     })
     const workspace = ctx.workspaceRegistry.get(first.workspace.workspaceId)
     if (workspace === undefined) throw new Error('fixture Workspace disappeared')
@@ -308,7 +415,7 @@ describe('WorkspaceController commands', () => {
     const { controller, ctx, root } = await harness()
     const created = await controller.create({ path: stageDir(root, 'pins') })
     const session = ctx.sessions.create(brandString<SessionId>('pin-me'), {
-      meta: { cwd: created.workspace.path },
+      meta: { cwd: cwdOf(created.workspace) },
     })
 
     await expect(controller.pinSession({ sessionId: session.id }))
@@ -318,7 +425,7 @@ describe('WorkspaceController commands', () => {
 
     // Pinning an archived Session is a caller error, not a missing session.
     const archived = ctx.sessions.create(brandString<SessionId>('stored'), {
-      meta: { cwd: created.workspace.path },
+      meta: { cwd: cwdOf(created.workspace) },
     })
     await controller.archiveSession({ sessionId: archived.id })
     await expect(controller.pinSession({ sessionId: archived.id }))
@@ -355,6 +462,43 @@ describe('WorkspaceController follow', () => {
         },
       })
     }).toThrow('references missing Workspace "missing"')
+  })
+
+  it('projects a rootless project as a null path in the baseline and in every increment', async () => {
+    const { controller, ctx, root } = await harness()
+    // A project named before its repositories are declared projects `path` as
+    // `null` rather than `undefined`, because this value crosses a Remote
+    // boundary that carries JSON only.
+    const named = await controller.create({ title: 'Vehicle platform' })
+    const id = named.workspace.workspaceId
+    expect(named.workspace.path).toBeNull()
+
+    const feed = new WorkspaceFeed(ctx)
+    expect(feed.baseline()).toMatchObject({ items: [{ workspaceId: id, path: null, roots: [] }] })
+
+    const abort = new AbortController()
+    const iterator = controller.follow(abort.signal)[Symbol.asyncIterator]()
+    await expect(nextFrame(iterator)).resolves.toMatchObject({
+      type: 'baseline',
+      value: { items: [{ workspaceId: id, path: null, roots: [] }] },
+    })
+
+    // Attaching a root writes the `workspaces` table, which is the projection
+    // that has to re-derive `path` from the record's own roots list.
+    const ivi = stageDir(root, 'ivi')
+    await controller.addRoot({ workspaceId: id, path: ivi })
+    await expect(nextFrame(iterator)).resolves.toMatchObject({
+      type: 'upsert', workspace: { workspaceId: id, path: ivi, roots: [ivi] },
+    })
+    // Dropping the last root returns the record to the rootless shape, so the
+    // same derivation has to fall back to `null` again.
+    await controller.removeRoot({ workspaceId: id, path: ivi })
+    await expect(nextFrame(iterator)).resolves.toMatchObject({
+      type: 'upsert', workspace: { workspaceId: id, path: null, roots: [] },
+    })
+
+    abort.abort()
+    await iterator.return?.()
   })
 
   it('starts a fresh feed with existing pins and follows their removal', async () => {
@@ -414,7 +558,7 @@ describe('WorkspaceController follow', () => {
     })
 
     const session = ctx.sessions.create(brandString<SessionId>('archived'), {
-      meta: { cwd: first.workspace.path },
+      meta: { cwd: cwdOf(first.workspace) },
     })
     await controller.archiveSession({ sessionId: session.id })
     await expect(nextFrame(iterator)).resolves.toEqual({
@@ -454,8 +598,8 @@ describe('WorkspaceController follow', () => {
     const hiddenWorkspace = await controller.create({ path: stageDir(root, 'hidden') })
     const shownId = shown.workspace.workspaceId
     const hiddenId = hiddenWorkspace.workspace.workspaceId
-    const shared = ctx.sessions.create(brandString<SessionId>('shared'), { meta: { cwd: shown.workspace.path } })
-    const secret = ctx.sessions.create(brandString<SessionId>('secret'), { meta: { cwd: shown.workspace.path } })
+    const shared = ctx.sessions.create(brandString<SessionId>('shared'), { meta: { cwd: cwdOf(shown.workspace) } })
+    const secret = ctx.sessions.create(brandString<SessionId>('secret'), { meta: { cwd: cwdOf(shown.workspace) } })
     const workspace = ctx.workspaceRegistry.get(shownId)
     if (workspace === undefined) throw new Error('fixture Workspace disappeared')
     await workspace.attachSession(shared.id)
@@ -591,13 +735,13 @@ describe('first-use Remote', () => {
       .resolves.toMatchObject({ workspace: { workspaceId: workspace!.id, path: root, title: basename(root) } })
   })
 
-  it('returns a durable Workspace named after its fixed directory without allocating a Session', async () => {
+  it('returns a durable Project named after its fixed directory without allocating a Session', async () => {
     const { controller, ctx, root } = await harness()
     const signal = new AbortController().signal
     const result = await controller.initializeDefault(signal)
-    expect(result!.workspace.path).toBe(join(root, 'deepseek-harness', DEFAULT_WORKSPACE_DIRECTORY))
+    expect(cwdOf(result!.workspace)).toBe(join(root, 'deepseek-harness', DEFAULT_WORKSPACE_DIRECTORY))
     expect(result!.workspace.title).toBe(DEFAULT_WORKSPACE_DIRECTORY)
-    expect(existsSync(result!.workspace.path)).toBe(true)
+    expect(existsSync(cwdOf(result!.workspace))).toBe(true)
     expect(ctx.sessions.list()).toEqual([])
     expect(await controller.initializeDefault(signal)).toEqual(result)
   })

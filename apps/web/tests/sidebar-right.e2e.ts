@@ -26,7 +26,7 @@ import { afterAll, beforeAll, describe, expect, it, onTestFailed } from 'vitest'
 import { createMessage, createUserMessage } from '@deepseek-ai/dsh-llm'
 import { acknowledgeReloadConnectionLoss, launchWebScaffold, watchConsole, type WebScaffold } from './scaffold.ts'
 import {
-  connectFreshWorkspace, fullscreenBox, newEnglishPage, saveFailureShot, ZH_BROWSER_LOCALE,
+  connectFreshWorkspace, fullscreenBox, newEnglishPage, saveFailureShot, startSessionIn, ZH_BROWSER_LOCALE,
 } from './support.ts'
 
 /** The produced file the seeded turn writes, and what the preview should show. */
@@ -1008,9 +1008,10 @@ describe('web e2e: shipped right Sidebar', () => {
         })
         const before = await records()
 
-        // The real New Session action selects a distinct blank Session; its
-        // collapsed surface must not inherit the settled Session's tabs.
-        await fx.getByRole('button', { name: 'New session', exact: true }).last().click()
+        // The project row's own action selects a distinct blank Session; its
+        // collapsed surface must not inherit the settled Session's tabs. The
+        // shell owns no New Session control of its own.
+        await startSessionIn(fx, 'workspace')
         await expect.poll(async () => await settled.getAttribute('aria-selected')).toBe('false')
         await expect.poll(async () => await frame.getAttribute('data-rightbar-collapsed')).toBe('true')
         expect(await column.locator('[data-sidebar-right-open]').count()).toBe(0)
@@ -1431,7 +1432,7 @@ describe('web e2e: shipped right Sidebar', () => {
         expect(await width(column)).toBeGreaterThan(300)
         await expect.poll(async () => await tabTitles(column)).toEqual(['文件', '开始'])
         await expect.poll(async () => await guide.locator('[data-sidebar-right-guide-entry="files"]').innerText())
-          .toBe('工作区文件\n浏览会话工作区的文件\n⌥\n⌘\nP')
+          .toBe('项目文件\n浏览会话项目的文件\n⌥\n⌘\nP')
         const fileEntry = guide.locator('[data-sidebar-right-guide-entry="files"]')
         const terminalEntry = guide.locator('[data-sidebar-right-guide-entry="terminal"]')
         for (const entry of [fileEntry, terminalEntry]) {

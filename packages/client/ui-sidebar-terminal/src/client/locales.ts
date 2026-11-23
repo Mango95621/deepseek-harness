@@ -11,7 +11,7 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
 export const zh = {
   'shortcut.noSession': '请先选择会话',
   recoveryFailed: '恢复终端失败：{message}', retryRecovery: '重试恢复终端',
-  shell: '选择 Shell', shellLoading: '正在读取 Shell…', shellEmpty: '没有可用的 Shell', description: '在会话工作区运行命令',
+  shell: '选择 Shell', shellLoading: '正在读取 Shell…', shellEmpty: '没有可用的 Shell', description: '在会话项目运行命令',
   title: '终端', new: '新建终端', loading: '正在读取终端环境…', creating: '正在启动…',
   connecting: '正在连接…', disconnected: '连接已断开。', reconnect: '重新连接',
   readonly: '此页面当前只读。', control: '接管输入',
@@ -26,14 +26,14 @@ export const zh = {
   'badge.agent': 'Agent', 'badge.agentHint': '由 Agent 打开。你一输入就由你接管，Agent 之后只能读取。',
   'badge.sandbox': '沙箱',
   'badge.readOnlyHint': '命令在 Agent 的只读沙箱里运行，包括你在这里输入的命令。',
-  'badge.workspaceWriteHint': '命令在 Agent 的工作区沙箱里运行，包括你在这里输入的命令。',
+  'badge.workspaceWriteHint': '命令在 Agent 的项目沙箱里运行，包括你在这里输入的命令。',
 } satisfies Record<string, string>
 
 /** English terminal copy. */
 export const en = {
   'shortcut.noSession': 'Select a session first',
   recoveryFailed: 'Terminal recovery failed: {message}', retryRecovery: 'Retry terminal recovery',
-  shell: 'Choose shell', shellLoading: 'Loading shells…', shellEmpty: 'No shells available', description: 'Run commands in the Session workspace',
+  shell: 'Choose shell', shellLoading: 'Loading shells…', shellEmpty: 'No shells available', description: 'Run commands in the Session project',
   title: 'Terminal', new: 'New terminal', loading: 'Reading terminal environment…', creating: 'Starting…',
   connecting: 'Connecting…', disconnected: 'Disconnected.', reconnect: 'Reconnect',
   readonly: 'This view is read-only.', control: 'Take control',
@@ -48,7 +48,7 @@ export const en = {
   'badge.agent': 'Agent', 'badge.agentHint': 'Opened by the agent. Typing here takes over; the agent can then only read it.',
   'badge.sandbox': 'Sandbox',
   'badge.readOnlyHint': "Commands run in the agent's read-only sandbox, including commands you type here.",
-  'badge.workspaceWriteHint': "Commands run in the agent's workspace sandbox, including commands you type here.",
+  'badge.workspaceWriteHint': "Commands run in the agent's project sandbox, including commands you type here.",
 } satisfies Record<keyof typeof zh, string>
 
 /** Japanese copy, checked against the English keys. */
@@ -59,7 +59,7 @@ export const ja = {
   'shell': 'シェルを選択',
   'shellLoading': 'シェルを読み込み中…',
   'shellEmpty': '利用可能なシェルがありません',
-  'description': 'セッションのワークスペースでコマンドを実行',
+  'description': 'セッションのプロジェクトでコマンドを実行',
   'title': 'ターミナル',
   'new': '新しいターミナル',
   'loading': 'ターミナル環境を読み込み中…',
@@ -85,7 +85,7 @@ export const ja = {
   'badge.agentHint': 'エージェントが開きました。ここで入力すると操作を引き継ぎ、以後エージェントは読み取りのみ可能になります。',
   'badge.sandbox': 'サンドボックス',
   'badge.readOnlyHint': 'コマンドはエージェントの読み取り専用サンドボックスで実行されます（ここで入力したコマンドも含みます）。',
-  'badge.workspaceWriteHint': 'コマンドはエージェントのワークスペースサンドボックスで実行されます（ここで入力したコマンドも含みます）。',
+  'badge.workspaceWriteHint': 'コマンドはエージェントのプロジェクトサンドボックスで実行されます（ここで入力したコマンドも含みます）。',
 } satisfies Record<keyof typeof en, string>
 
 /** Spanish dictionary, checked against the English keys. */

@@ -277,6 +277,10 @@ const SENTENCE_MODEL_EXPERIENCE: Readonly<Record<string, SentenceContract>> = {
   'packages/web/web': { kind: 'indirect', reason: 'The provider registry delegates model rendering to dsh-tool-web.' },
   'packages/web/web-fetch-http': { kind: 'indirect', reason: 'The provider backend delegates model rendering to dsh-tool-web.' },
   'packages/workflow/workflow': { kind: 'indirect', reason: 'The service delegates parent and child model rendering to its consumer and engine.' },
+  'packages/yxspec/yxspec': { kind: 'none', reason: 'The domain service answers stage, step, and status queries for its consumers; it registers no tool, prompt section, or Session event.' },
+  'packages/yxspec/yxspec-api': { kind: 'none', reason: 'The Remote owners serve the browser client over the `yxspec` and `yxspecRemote` namespaces; neither registers model-facing content.' },
+  'packages/yxspec/yxspec-artifact': { kind: 'none', reason: 'The ledger answers existence queries and emits a log-only observation event that no model request reads.' },
+  'packages/client/ui-yxspec': { kind: 'none', reason: 'The browser panel and onboarding gate render Host-held process state without registering a tool, prompt section, or Session event.' },
 }
 
 interface Failure {

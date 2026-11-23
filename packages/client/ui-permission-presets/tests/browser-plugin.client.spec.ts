@@ -205,7 +205,7 @@ describe('ui-permission browser plugin', () => {
     expect(again.find(option => option.id === 'auto')?.detail)
       .toBe('Run without a sandbox after an experimental same-model review of every native tool call and PTC inner call.')
     // English built-ins use product labels; other kebab-case names title-case.
-    expect(again.map(option => option.label)).toEqual(['Read Only', 'Workspace Write', 'Full access', 'Auto review'])
+    expect(again.map(option => option.label)).toEqual(['Read Only', 'Project Write', 'Full access', 'Auto review'])
     expect(again.find(option => option.id === 'danger-full-access')?.confirmation).toEqual({
       title: 'Enable Full access?',
       description: accessEn['confirm.description'],
@@ -225,7 +225,7 @@ describe('ui-permission browser plugin', () => {
     })
     b.locale.setLocale('zh')
     const localized = await b.popup().options(proj, new AbortController().signal)
-    expect(localized.map(option => option.label)).toEqual(['仅可查看', '工作区内修改', '完全权限', '自动审查'])
+    expect(localized.map(option => option.label)).toEqual(['仅可查看', '项目内修改', '完全权限', '自动审查'])
     expect(localized.find(option => option.id === 'danger-full-access')?.confirmation).toEqual({
       title: '确认启用完全权限？',
       description: accessZh['confirm.description'],

@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "YXSpec 冻结点",
+    "description": "把 ASPICE 人工签核步骤接入宿主审批，使无人值守的流程默认失败关闭。"
+  }
+}

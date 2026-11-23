@@ -1,0 +1,49 @@
+# Bilingual-pair consistency record for README.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write packages/yxspec/yxspec-artifact/README.md
+/:
+  en: f20ce537df546ebe
+  zh: 3f9cf957eb5ddca4
+/deepseek-ai-dsh-yxspec-artifact:
+  en: 5a7d1217e17d30eb
+  zh: 16d97aa672e0d2da
+/deepseek-ai-dsh-yxspec-artifact/summary:
+  en: f30c7b3aa12b540d
+  zh: ea868f26f06c425c
+/deepseek-ai-dsh-yxspec-artifact/table-of-contents:
+  en: d152484eb41ac6b4
+  zh: 09388d293f9be9cb
+/deepseek-ai-dsh-yxspec-artifact/use-this-package:
+  en: 859f1a97c2536218
+  zh: 78573a54188d26d1
+/deepseek-ai-dsh-yxspec-artifact/use-this-package/when-to-choose-it:
+  en: cee6cf9baf7fcfca
+  zh: 557fe34780bbab2d
+/deepseek-ai-dsh-yxspec-artifact/use-this-package/minimal-configuration:
+  en: e33242f60613dce6
+  zh: 441c92cc11bcb825
+/deepseek-ai-dsh-yxspec-artifact/use-this-package/asking-what-landed:
+  en: a36c91542d954def
+  zh: ae2c244284055e9b
+/deepseek-ai-dsh-yxspec-artifact/understand-the-implementation:
+  en: be1b971e6ae915ab
+  zh: 42ec72dcf7c28c9e
+/deepseek-ai-dsh-yxspec-artifact/understand-the-implementation/source-map:
+  en: 124bfbedb4004a6f
+  zh: 8b9a39724adfa750
+/deepseek-ai-dsh-yxspec-artifact/further-exploration:
+  en: 0b6ac1b83b88660a
+  zh: 74693283e187342e
+/deepseek-ai-dsh-yxspec-artifact/model-experience:
+  en: 0a2b836c7dbf683d
+  zh: 9847888defc94747
+/deepseek-ai-dsh-yxspec-artifact/model-experience/kv-cache-effect:
+  en: e7ba08477bf22c4e
+  zh: f365439c69beb722
+/deepseek-ai-dsh-yxspec-artifact/known-limitations-and-deferred-work:
+  en: 1468f4ff58a23313
+  zh: 0191b7878a3e9349
+/deepseek-ai-dsh-yxspec-artifact/known-limitations-and-deferred-work/dev-note:
+  en: e67f633dc6fe7773
+  zh: 3bb0c20c93f16f98

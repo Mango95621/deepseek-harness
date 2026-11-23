@@ -11,7 +11,7 @@ import {
   captureStableAria, compareOrRefreshGolden, fixtureUserPrompts, launchWebScaffold, webSnapshotMode, watchConsole,
   type WebScaffold,
 } from './scaffold.ts'
-import { connectFreshWorkspace, newEnglishPage } from './support.ts'
+import { connectFreshWorkspace, newEnglishPage, startSessionIn } from './support.ts'
 
 const fixture = fileURLToPath(new URL('../../../snapshots/web/fresh-round-trip/session.v3.jsonl', import.meta.url))
 const expected = fileURLToPath(new URL('../../../snapshots/web/voice-input/ui.expected.md', import.meta.url))
@@ -202,14 +202,16 @@ it.skipIf(webSnapshotMode() === 'record')('guides voice setup, records from stan
   expect(levelBounds.x).toBeGreaterThan(pickerBounds.x + pickerBounds.width / 2)
   expect(levelBounds.x + levelBounds.width).toBeLessThan(pickerBounds.x + pickerBounds.width)
   await page.setViewportSize({ width: 1280, height: 900 })
-  await page.getByRole('button', { name: 'New session', exact: true }).filter({ hasText: 'New Session' }).click()
+  // The shell owns no New Session control; the project row's action is the way
+  // back to a blank, so both switches below name that row.
+  await startSessionIn(page, 'workspace')
   await mic.waitFor()
   await expect.poll(() => page.evaluate(() => (window as Window & { voiceTestStreams?: MediaStream[] }).voiceTestStreams!
     .every(stream => stream.getTracks().every(track => track.readyState === 'ended')))).toBe(true)
   await page.getByRole('button', { name: 'Plugins', exact: true }).click()
   await page.locator('[data-plugin-package="@deepseek-ai/dsh-experimental-voice-input-bundle"]').waitFor()
   expect(await page.locator('[data-plugin-detail]').count()).toBe(0)
-  await page.getByRole('button', { name: 'New session', exact: true }).filter({ hasText: 'New Session' }).click()
+  await startSessionIn(page, 'workspace')
   await mic.waitFor()
   const micBox = await mic.boundingBox(), modelBox = await page.getByRole('button', { name: /^Select model, current/ }).boundingBox()
   const sendBox = await page.getByRole('button', { name: 'Send message', exact: true }).boundingBox()

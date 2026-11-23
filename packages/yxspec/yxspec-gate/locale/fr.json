@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Contrôle d’étapes YXSpec",
+    "description": "Transforme les portes d’étape ASPICE de texte en interception au niveau de l’hôte avant l’exécution d’un outil."
+  }
+}

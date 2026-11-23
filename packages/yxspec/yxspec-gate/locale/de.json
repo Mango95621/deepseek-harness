@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "YXSpec-Stufengate",
+    "description": "Wandelt die ASPICE-Stufengates von Prosa in Host-Abfangen vor der Werkzeugausführung um."
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Driver de passos YXSpec",
+    "description": "Fornece as ferramentas de passo voltadas ao modelo que avançam o fluxo passo a passo com base nas evidências em disco."
+  }
+}

@@ -1,0 +1,321 @@
+/*
+ * Onboarding gate: the wizard that stands between a blank home and a Conversation.
+ *
+ * Sizing follows the hero it replaces (centered stack, readable column) so dismissing the
+ * wizard does not visibly reflow the page. Colors come from the alias variables the rest of
+ * the client uses, so both themes are covered without a second declaration.
+ */
+
+.layer {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  min-height: 100%;
+  padding: 32px 24px;
+}
+
+.card {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  width: 100%;
+  max-width: 560px;
+  padding: 24px;
+  border: 0.5px solid var(--dsw-alias-border-l4);
+  border-radius: var(--dsw-radius-xl, var(--dsw-radius-lg));
+  background: var(--dsw-alias-bg-layer-1);
+}
+
+.header {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.title {
+  color: var(--dsw-alias-label-primary);
+  font-size: 17px;
+  font-weight: 600;
+  line-height: 24px;
+}
+
+.subtitle {
+  color: var(--dsw-alias-label-tertiary);
+  font-size: 13px;
+  line-height: 20px;
+}
+
+/* The trail: one chip per step, current step emphasized, done steps muted. */
+.trail {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.trailStep {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 9px;
+  border: 0.5px solid var(--dsw-alias-border-l4);
+  border-radius: 999px;
+  /* Full-round: state the arc back, or the universal superellipse squares the capsule ends. */
+  corner-shape: round;
+  color: var(--dsw-alias-label-tertiary);
+  font-size: 12px;
+  line-height: 18px;
+}
+
+.trailStep[data-state='done'] {
+  border-color: var(--dsw-alias-border-l3);
+  color: var(--dsw-alias-label-secondary);
+}
+
+.trailStep[data-state='current'] {
+  border-color: var(--dsw-alias-brand-primary, var(--dsw-alias-border-l3));
+  color: var(--dsw-alias-label-primary);
+  font-weight: 510;
+}
+
+.trailIndex {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 15px;
+  height: 15px;
+  border-radius: 999px;
+  /* Full-round: state the arc back, or the universal superellipse deforms the index disc. */
+  corner-shape: round;
+  background: var(--dsw-alias-bg-layer-2, var(--dsw-alias-bg-layer-1));
+  font-size: 10px;
+}
+
+.body {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-height: 148px;
+}
+
+.hint {
+  color: var(--dsw-alias-label-tertiary);
+  font-size: 12px;
+  line-height: 18px;
+}
+
+/* Candidate lists: a bounded scroll region so a 200-entry enumeration cannot push the actions off-screen. */
+.list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: 216px;
+  overflow-y: auto;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  /* Elevated surface: the rows this region scrolls take the l2 rung on hover and
+     when pressed, so the thumb takes the l2 elevation pair rather than the base
+     one (see ui-theme styles/scrollbar.css for the rebinding contract). Declared
+     here because custom properties reach the scrollbar from the scrolling
+     element itself, not from the row drawn over it. */
+  --dsh-scrollbar-thumb: var(--dsw-alias-scrollbar-bg-l2);
+  --dsh-scrollbar-thumb-hover: var(--dsw-alias-scrollbar-hover-l2);
+}
+
+.row {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  width: 100%;
+  padding: 7px 10px;
+  border: 0.5px solid transparent;
+  border-radius: var(--dsw-radius-md);
+  background: transparent;
+  color: var(--dsw-alias-label-primary);
+  font: inherit;
+  font-size: 13px;
+  line-height: 20px;
+  text-align: left;
+  cursor: pointer;
+}
+
+/* Hover is a capability, not a given: a touch composition has no hover state to fall back from. */
+@media (hover: hover) {
+  .row:hover {
+    background: var(--dsw-alias-bg-layer-2, var(--dsw-alias-bg-layer-1));
+  }
+}
+
+.row[aria-pressed='true'] {
+  border-color: var(--dsw-alias-border-l3);
+  background: var(--dsw-alias-bg-layer-2, var(--dsw-alias-bg-layer-1));
+}
+
+.rowTitle {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rowMeta {
+  flex: none;
+  color: var(--dsw-alias-label-tertiary);
+  font-size: 12px;
+}
+
+.empty {
+  padding: 14px 10px;
+  border: 0.5px dashed var(--dsw-alias-border-l4);
+  border-radius: var(--dsw-radius-md);
+  color: var(--dsw-alias-label-tertiary);
+  font-size: 13px;
+  line-height: 20px;
+  text-align: center;
+}
+
+/* Where the host looked. Muted, because it is an explanation and not a control. */
+.searched {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.searchedToggle {
+  align-self: flex-start;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--dsw-alias-label-tertiary);
+  font: inherit;
+  font-size: 12px;
+  line-height: 18px;
+  text-align: left;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
+
+@media (hover: hover) {
+  .searchedToggle:hover {
+    color: var(--dsw-alias-label-secondary);
+  }
+}
+
+/* Paths are monospaced so a truncated tail is visibly truncated rather than misread. */
+.searchedList {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 0;
+  padding: 8px 10px;
+  border-radius: var(--dsw-radius-md);
+  background: var(--dsw-alias-bg-layer-2, var(--dsw-alias-bg-layer-1));
+  color: var(--dsw-alias-label-tertiary);
+  font-family: var(--dsw-font-mono, ui-monospace, monospace);
+  font-size: 11px;
+  line-height: 16px;
+  list-style: none;
+  overflow-wrap: anywhere;
+}
+
+/* The operator's own additions. A control block rather than an explanation, so it sits above
+   the search report and carries its own hint even when the list is empty. */
+.extra {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding-top: 4px;
+  border-top: 0.5px solid var(--dsw-alias-border-l4);
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.label {
+  color: var(--dsw-alias-label-secondary);
+  font-size: 12px;
+  line-height: 18px;
+}
+
+.actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding-top: 4px;
+}
+
+.actionsEnd {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+}
+
+.unavailable {
+  color: var(--dsw-alias-label-tertiary);
+  font-size: 13px;
+  line-height: 20px;
+}
+
+/* Per-step heading: the step's own name over the sentence explaining it. */
+.stepHead {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.stepTitle {
+  color: var(--dsw-alias-label-primary);
+  font-size: 13px;
+  font-weight: 510;
+  line-height: 20px;
+}
+
+/* Leading folder glyph in a repository row; a row's own button supplies the rest. */
+.rowIcon {
+  flex: none;
+  color: var(--dsw-alias-label-tertiary);
+  align-self: center;
+}
+
+/* A labelled text field. */
+.text {
+  width: 100%;
+  padding: 7px 10px;
+  border: 0.5px solid var(--dsw-alias-border-l3);
+  border-radius: var(--dsw-radius-md);
+  background: var(--dsw-alias-bg-layer-2, var(--dsw-alias-bg-layer-1));
+  color: var(--dsw-alias-label-primary);
+  font: inherit;
+  font-size: 13px;
+  line-height: 20px;
+}
+
+.text:focus-visible {
+  border-color: var(--dsw-alias-brand-primary, var(--dsw-alias-border-l3));
+  outline: none;
+}
+
+/* Confirmation summary: plain rows, no interactions. */
+.summary {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  color: var(--dsw-alias-label-secondary);
+  font-size: 13px;
+  line-height: 20px;
+  list-style: none;
+}

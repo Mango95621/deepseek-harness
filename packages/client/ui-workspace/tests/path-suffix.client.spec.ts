@@ -46,4 +46,18 @@ describe('distinguishingPathSuffixes', () => {
       [3, 'c'],
     ])
   })
+
+  it('gives a rootless Workspace no suffix, since it has no path to tell it apart by', () => {
+    // A project created by the wizard's first step holds no repository root until step 2, so its
+    // path is null. It shares a title with a real directory here: the directory keeps its suffix
+    // against the *other* real path, and the rootless row simply contributes nothing — which is
+    // also why it must not crash the split.
+    expect([
+      ...distinguishingPathSuffixes([
+        { id: 0, title: 'workspace', path: '/home/me/a/workspace' },
+        { id: 1, title: 'workspace', path: '/home/me/b/workspace' },
+        { id: 2, title: 'workspace', path: null },
+      ]).entries(),
+    ]).toEqual([[0, 'a/workspace'], [1, 'b/workspace']])
+  })
 })

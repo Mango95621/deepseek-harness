@@ -19,7 +19,7 @@
 - textbox "Message or run a task, / commands, @ files or sessions":
   - paragraph: Queue item to remove
 - button "Add files or run commands"
-- 'button "Access mode, current: Workspace Write"': Workspace Write
+- 'button "Access mode, current: Project Write"': Project Write
 - button "Select model, current DeepSeek-V4-Flash": DeepSeek-V4-Flash
 - button "Stop generating"
 - button "Sending message" [disabled]

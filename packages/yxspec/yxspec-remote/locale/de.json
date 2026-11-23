@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "YXSpec-Remote-Build",
+    "description": "Deklariert Build-Server und führt darauf Kompilier- oder Prüfbefehle über den OpenSSH-Client der Plattform aus."
+  }
+}

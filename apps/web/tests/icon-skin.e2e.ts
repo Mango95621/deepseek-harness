@@ -24,7 +24,7 @@ it.each(['light', 'dark'] as const)('renders a 16px permission trigger and 14px 
   const triggerBox = await trigger.locator('svg').first().boundingBox()
   expect(triggerBox && [triggerBox.width, triggerBox.height]).toEqual([16, 16])
   await trigger.click()
-  const icon = page.getByRole('menuitem', { name: 'Workspace Write', exact: true }).locator('svg').first()
+  const icon = page.getByRole('menuitem', { name: 'Project Write', exact: true }).locator('svg').first()
   // Isolate edge coverage from the menu's translucent material without changing placement.
   await icon.evaluate((svg, dark) => {
     svg.style.color = dark ? 'white' : 'black'

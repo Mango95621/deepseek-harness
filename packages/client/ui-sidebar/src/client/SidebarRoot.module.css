@@ -81,7 +81,7 @@
   padding: 0;
 }
 
-:global([data-windows-titlebar]) .root:not(.collapsed) .newSessionRow {
+:global([data-windows-titlebar]) .root:not(.collapsed) .sessionActionRow {
   margin-top: 6px;
 }
 
@@ -95,24 +95,11 @@
   --dsh-windows-menu-start: 84px;
 }
 
-:global([data-windows-titlebar]) .collapsed .newSession {
-  position: fixed;
-  top: calc((var(--dsh-windows-titlebar-height) - 28px) / 2);
-  left: 48px;
-  margin: 0;
-  padding: 0;
-  border: none;
-  z-index: 30;
-  -webkit-app-region: no-drag;
-}
-
-:global([data-windows-titlebar]) .railIn .iconButton,
-:global([data-windows-titlebar]) .railIn .newSession {
+:global([data-windows-titlebar]) .railIn .iconButton {
   animation: none;
 }
 
-:global([data-windows-titlebar]) .collapsed .toggle,
-:global([data-windows-titlebar]) .collapsed .newSession {
+:global([data-windows-titlebar]) .collapsed .toggle {
   width: 28px;
   height: 28px;
   border-radius: var(--dsw-radius-sm);
@@ -166,13 +153,13 @@
    The bottom-pinned settings seat shares their opacity timeline but stays
    horizontally fixed. Only a live collapse gets .railIn; a cold collapsed
    render stays static.
-   The New Session row renders its content through the `sidebar.session.action`
-   HOC slot, whose `display: contents` outlet anchor sits between the row and
-   its content. The shell's New-session button and the occupant's own controls
-   are that anchor's children, so the fade targets them through the anchor; the
-   boxless anchor itself cannot carry an animation. */
+   The plugin-contributed session-action row renders its content through the
+   `sidebar.session.action` HOC slot, whose `display: contents` outlet anchor
+   sits between the row and its content. The occupant's own controls are that
+   anchor's children, so the fade targets them through the anchor; the boxless
+   anchor itself cannot carry an animation. */
 .railIn .iconButton,
-.railIn .newSessionRow > :global([data-slot='sidebar.session.action']) > *,
+.railIn .sessionActionRow > :global([data-slot='sidebar.session.action']) > *,
 .railIn .panelList,
 .railIn .regionArea {
   animation: rail-in 150ms var(--ds-ease-in-out) backwards;
@@ -429,8 +416,10 @@
   white-space: nowrap;
 }
 
-/* New session fills the row; the session-action HOC layer renders it, then the occupant's controls. */
-.newSessionRow {
+/* The seat below the brand row. The shell contributes no New Session control,
+   so this row holds only what a plugin registers through the
+   `sidebar.session.action` HOC — with no occupant the shell renders no row. */
+.sessionActionRow {
   flex: none;
   display: flex;
   align-items: center;
@@ -438,128 +427,12 @@
   margin: 0 calc(var(--dsh-sidebar-paint-inset) + 1px) 6px;
 }
 
-/* New Session: 38px bar, 12px radius (figma 133:7634 geometry, squared-off
-   corners); collapsed it renders as the rail's plain icon control. */
-.newSession {
-  container-type: inline-size;
-  position: relative;
-  flex: 1 1 auto;
-  min-width: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 0;
-  height: 38px;
-  padding: 8px 12px;
-  margin: 0;
-  box-sizing: border-box;
-  border: 0.5px solid var(--dsw-alias-border-l3);
-  border-radius: var(--dsw-radius-md);
-  background: var(--dsw-alias-button-elevated-fill);
-  color: var(--dsw-alias-label-primary);
-  font-size: 14px;
-  font-weight: 500;
-  line-height: 22px;
-  cursor: pointer;
-  overflow: hidden;
-}
-
-@media (hover: hover) {
-  .newSession:hover {
-    background: var(--dsw-alias-button-floating-hover);
-  }
-}
-
-/* macOS: the themed elevated fill reads as a foreign slab on the vibrancy
-   sidebar; a white wash sits in the glass like native macOS sidebar
-   controls; the glass tokens lower its alpha in dark mode. */
-:global([data-platform='darwin']) :where(.root:not([role='dialog'])) .newSession {
-  background: var(--dsw-specific-sidebar-glass-fill);
-}
-
-@media (hover: hover) {
-  :global([data-platform='darwin']) :where(.root:not([role='dialog'])) .newSession:hover {
-    background: var(--dsw-specific-sidebar-glass-hover);
-  }
-}
-
-/* The rail stacks the occupant's controls under the New session icon. */
-.collapsed .newSessionRow {
+/* The rail stacks the occupant's controls in a column. */
+.collapsed .sessionActionRow {
   flex-direction: column;
   align-items: flex-start;
   gap: 4px;
   margin: 0 0 12px;
-}
-
-.collapsed .newSession {
-  flex: none;
-  width: 36px;
-  height: 36px;
-  padding: 0;
-  margin: 0;
-  gap: 0;
-  border-color: transparent;
-  background: transparent;
-}
-
-@media (hover: hover) {
-  .collapsed .newSession:hover {
-    background-color: var(--dsw-alias-interactive-bg-hover);
-  }
-}
-
-:global([data-platform='darwin']) :where(.root:not([role='dialog'])).collapsed .newSession {
-  background: var(--dsw-specific-sidebar-glass-collapsed-fill);
-}
-
-@media (hover: hover) {
-  :global([data-platform='darwin']) :where(.root:not([role='dialog'])).collapsed .newSession:hover {
-    background: var(--dsw-specific-sidebar-glass-collapsed-hover);
-  }
-}
-
-.newSessionLabel {
-  max-width: 200px;
-  overflow: hidden;
-  white-space: nowrap;
-}
-
-.collapsed .newSessionLabel {
-  max-width: 0;
-}
-
-.newSessionLabelMask { flex: 1; min-width: 0; }
-
-.newSession:focus-visible .newSessionLabelMask:has(+ .newSessionShortcut) {
-  overflow: hidden;
-  mask-image: linear-gradient(to right, black calc(100% - 16px), transparent);
-}
-
-@media (hover: hover) {
-  .newSession:hover .newSessionLabelMask:has(+ .newSessionShortcut) {
-    overflow: hidden;
-    mask-image: linear-gradient(to right, black calc(100% - 16px), transparent);
-  }
-}
-.newSessionContent { display: flex; width: 100cqw; align-items: center; justify-content: center; gap: 6px; }
-.newSessionContent > svg { flex: none; }
-
-.newSessionShortcut {
-  opacity: 0;
-  display: inline-flex;
-  flex: none;
-  pointer-events: none;
-  font-weight: 400;
-}
-
-.newSession:focus-visible .newSessionShortcut {
-  opacity: 1;
-}
-
-@media (hover: hover) {
-  .newSession:hover .newSessionShortcut {
-    opacity: 1;
-  }
 }
 
 .scrollRegion {
@@ -843,7 +716,7 @@
   .wide,
   .fading > *,
   .railIn .iconButton,
-  .railIn .newSessionRow > :global([data-slot='sidebar.session.action']) > *,
+  .railIn .sessionActionRow > :global([data-slot='sidebar.session.action']) > *,
   .railIn .panelList,
   .railIn .footArea,
   .railIn .regionArea {

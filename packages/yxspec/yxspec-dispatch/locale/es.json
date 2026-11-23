@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Despacho ciego YXSpec",
+    "description": "Genera el mensaje de rol del trabajador, lo resume y lo delega sin que el controlador lea el cuerpo."
+  }
+}

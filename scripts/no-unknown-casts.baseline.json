@@ -624,9 +624,6 @@
   "packages/client/ui-sidebar-terminal/tests/terminal-theme.client.spec.ts": {
     "1fa946c54b497010d85a36dcb586ae0a99991d8eb4eab8ef709eb34af373fdc5": 1
   },
-  "packages/client/ui-sidebar/src/client/index.ts": {
-    "4c73f40f3ce989f285848573d7154fb295886bba707ad829e2c8c089e326aeea": 1
-  },
   "packages/client/ui-subagent/tests/browser-plugin.client.spec.ts": {
     "810a8e63d34628d25866491b3c6455a51b2d114261b67e62b42728b765370993": 1
   },
@@ -1781,11 +1778,6 @@
   },
   "packages/test-support/client-runtime/src/locale-env.ts": {
     "56cede35ce34488cdae4b19aec217c9c939377eb891fe68827fbd64cd019170c": 1
-  },
-  "packages/test-support/client-runtime/src/workspaces.ts": {
-    "2599f3cec2f24099845e400127f0b794905f7285a04a393d63694e39153bd393": 1,
-    "8697fd8fff8ba5423d1f37b43bf9b22e79e3f230d0e089a989cffe1bf5dcb439": 1,
-    "fe9f3bd22d9c19e72b7f56e9f13eb8c087831226cf1a644723561a0031e05d19": 1
   },
   "packages/test-support/client-runtime/tests/assembly-remote-proxies.client.spec.ts": {
     "4da8c81f2924b59d3d462f39eea49025c3b6edb9199c12428dcc403ebf2fc45b": 1,

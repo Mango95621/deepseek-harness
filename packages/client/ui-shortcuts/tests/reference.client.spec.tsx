@@ -178,10 +178,10 @@ it('keeps core actions in product order across registration, remount and label c
   const core = [
     ['shortcuts.open', 'Keyboard shortcuts'], ['session.new', 'New session'],
     ['sidebar.left.toggle', 'Toggle left sidebar'], ['session.search', 'Search sessions'],
-    ['workspace.add', 'Add workspace'], ['session.rename', 'Rename session'],
+    ['workspace.add', 'Add project'], ['session.rename', 'Rename session'],
     ['session.fork', 'Fork session'], ['session.archive', 'Archive session'],
     ['settings.open', 'Open settings'], ['workspace.openLocal', 'Open workspace locally'],
-    ['sidebar.right.toggle', 'Toggle right sidebar'], ['workspace.files', 'Workspace files'],
+    ['sidebar.right.toggle', 'Toggle right sidebar'], ['workspace.files', 'Project files'],
     ['browser.new', 'Browser'], ['terminal.new', 'New terminal'], ['pane.split', 'Split pane'],
     ['pane.fullscreen.toggle', 'Toggle fullscreen'], ['page.refresh', 'Refresh page'], ['page.close', 'Close page'],
   ] as const

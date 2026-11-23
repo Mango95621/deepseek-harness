@@ -339,6 +339,20 @@ flowchart LR
   svc_cordisInspect["ctx.cordisInspect<br/>Dynamic Cordis inspect registry"]
   pkg_experimental_liveshare["experimental-liveshare"]
   svc_liveshareShares["ctx.liveshareShares<br/>Owner share management Remote"]
+  pkg_yxspec["yxspec"]
+  svc_yxspec["ctx.yxspec<br/>YXSpec ASPICE process model"]
+  pkg_yxspec_artifact["yxspec-artifact"]
+  pkg_yxspec_dispatch["yxspec-dispatch"]
+  pkg_yxspec_freeze["yxspec-freeze"]
+  pkg_yxspec_gate["yxspec-gate"]
+  pkg_yxspec_api["yxspec-api"]
+  svc_yxspecArtifacts["ctx.yxspecArtifacts<br/>YXSpec artifact ledger"]
+  svc_yxspecDispatch["ctx.yxspecDispatch<br/>YXSpec blind step dispatch"]
+  svc_yxspecController["ctx.yxspecController<br/>YXSpec process Remote"]
+  pkg_client_ui_yxspec["client-ui-yxspec"]
+  svc_yxspecRemote["ctx.yxspecRemote<br/>YXSpec build-server Remote namespace"]
+  pkg_yxspec_remote["yxspec-remote"]
+  svc_yxspecRemoteController["ctx.yxspecRemoteController<br/>YXSpec build-server declarations"]
   pkg_action_cards --> svc_actionCards
   pkg_agent --> svc_agents
   pkg_agent_default_model --> svc_agentDefaultModel
@@ -519,6 +533,12 @@ flowchart LR
   pkg_working_directory --> svc_workingDirectory
   pkg_workspace --> svc_workspaceRegistry
   pkg_workspace_changes --> svc_workspaceChanges
+  pkg_yxspec --> svc_yxspec
+  pkg_yxspec_api --> svc_yxspecController
+  pkg_yxspec_api --> svc_yxspecRemote
+  pkg_yxspec_artifact --> svc_yxspecArtifacts
+  pkg_yxspec_dispatch --> svc_yxspecDispatch
+  pkg_yxspec_remote --> svc_yxspecRemoteController
   svc_actionCards --> pkg_client_ui_action_cards
   svc_actionCards --> pkg_creation_recommendations
   svc_agentDefaultModel --> pkg_api_session_controller
@@ -691,6 +711,15 @@ flowchart LR
   svc_workspaceRegistry --> pkg_api_session_controller
   svc_workspaceRegistry --> pkg_api_workspace_controller
   svc_worktrees --> pkg_experimental_tool_worktree
+  svc_yxspec --> pkg_yxspec_api
+  svc_yxspec --> pkg_yxspec_artifact
+  svc_yxspec --> pkg_yxspec_dispatch
+  svc_yxspec --> pkg_yxspec_freeze
+  svc_yxspec --> pkg_yxspec_gate
+  svc_yxspecArtifacts --> pkg_yxspec_api
+  svc_yxspecArtifacts --> pkg_yxspec_gate
+  svc_yxspecController --> pkg_client_ui_yxspec
+  svc_yxspecRemoteController --> pkg_yxspec_api
   svc_fs -. event gate .-> pkg_fs_observation_policy
 ```
 
@@ -816,5 +845,11 @@ flowchart LR
 | `ctx.dynamicCordisRunner` | `core` | [`cordis-host-runner`](../packages/extensions/cordis-host-runner) | - | [`tool-cordis`](../packages/extensions/tool-cordis) | - | 拥有内存定义注册表、Host 半的 vm 沙箱和 request-run 往返流程；浏览器页面通过其 Remote 命名空间在线访问同一服务。 |
 | `ctx.cordisInspect` | `core` | [`cordis-host-runner`](../packages/extensions/cordis-host-runner) | - | [`tool-cordis`](../packages/extensions/tool-cordis) | - | 注册 Host inspect 提供方、镜像 Client 提供方 manifest，并通过动态 Cordis 传输路由 Client 查询。 |
 | `ctx.liveshareShares` | `service` | [`experimental-liveshare`](../packages/experimental/liveshare) | - | - | - | 以单个 Typert Remote 命名空间发布 owner 分享管理操作，供 owner 客户端面调用；每个方法都委托给同源路由原先使用的同一组操作。 |
+| `ctx.yxspec` | `core` | [`yxspec`](../packages/yxspec/yxspec) | - | [`yxspec-artifact`](../packages/yxspec/yxspec-artifact), [`yxspec-dispatch`](../packages/yxspec/yxspec-dispatch), [`yxspec-freeze`](../packages/yxspec/yxspec-freeze), [`yxspec-gate`](../packages/yxspec/yxspec-gate), [`yxspec-api`](../packages/yxspec/yxspec-api) | - | 持有从 skill 树读出的阶段/步骤模型，以及每个步骤所声明输入是否齐备的判定。其他 YXSpec 插件都通过它来定位流程，而不是各自重读声明。 |
+| `ctx.yxspecArtifacts` | `core` | [`yxspec-artifact`](../packages/yxspec/yxspec-artifact) | - | [`yxspec-gate`](../packages/yxspec/yxspec-gate), [`yxspec-api`](../packages/yxspec/yxspec-api) | - | 判定某一步骤所声明的产物是否已落盘，这正是门控在放行步骤前所依据的判断。 |
+| `ctx.yxspecDispatch` | `core` | [`yxspec-dispatch`](../packages/yxspec/yxspec-dispatch) | - | - | - | 实现 LD-027 盲派发：仅依据已声明的模型为步骤挑选智能体与技能，不向派发方暴露该步骤的内容。 |
+| `ctx.yxspecController` | `service` | [`yxspec-api`](../packages/yxspec/yxspec-api) | - | [`client-ui-yxspec`](../packages/client/ui-yxspec) | - | 以 `yxspec` Typert Remote 命名空间发布阶段模型与阶段状态，供浏览器面板读取。它所依赖的每个宿主服务都按调用解析，因此未挂载的账本会作为有类型的 Remote 失败暴露，而不会让插件一直处于 pending。 |
+| `ctx.yxspecRemote` | `service` | [`yxspec-api`](../packages/yxspec/yxspec-api) | - | - | - | 指出客户端读取构建服务器声明所用的 `yxspecRemote` Typert Remote 命名空间；描述符来自 Remote owner，而此键是 Carrier 面向它的服务面。 |
+| `ctx.yxspecRemoteController` | `core` | [`yxspec-remote`](../packages/yxspec/yxspec-remote) | - | [`yxspec-api`](../packages/yxspec/yxspec-api) | - | 持有某项目已声明的远端构建服务器，以及记录各服务器可达性的探测，并以 `yxspecRemote` 命名空间发布它们。 |
 
 维护模式：混合模式。服务从 Cordis 声明中发现；接口、实现和消费方角色在 `scripts/gen-doc-graphs.ts` 中分类，并设有完整性守卫。

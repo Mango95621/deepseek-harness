@@ -43,8 +43,8 @@ function reducedMotion(): string {
 
 /** The renderer's `display: contents` anchor for the sidebar session action HOC slot. */
 const SLOT_ANCHOR = ":global([data-slot='sidebar.session.action'])"
-/** The shell's New-session button and the occupant's controls: the anchor's children, each matched once. */
-const ROW_CONTENT = `.railIn .newSessionRow > ${SLOT_ANCHOR} > *`
+/** The seat's controls: the anchor's children, each matched once. The shell contributes none. */
+const ROW_CONTENT = `.railIn .sessionActionRow > ${SLOT_ANCHOR} > *`
 /** The rail rule as a plain selector a DOM can match, with the CSS-module escape removed. */
 const ROW_CONTENT_SELECTOR = ROW_CONTENT.replace(SLOT_ANCHOR, "[data-slot='sidebar.session.action']")
 
@@ -111,13 +111,11 @@ describe('SidebarRoot.module.css', () => {
   it('keeps the reviewed expanded spacing separate from rail and caption controls', () => {
     expect(declarations('.logoRow')?.get('padding')).toBe('8px 0 8px 8px')
     expect(declarations('.logoRow')?.get('margin-bottom')).toBe('0')
-    expect(declarations('.newSessionRow')?.get('margin')).toBe('0 calc(var(--dsh-sidebar-paint-inset) + 1px) 6px')
-    expect(declarations('.newSession')?.get('margin')).toBe('0')
-    expect(declarations('.newSessionContent')?.get('justify-content')).toBe('center')
+    expect(declarations('.sessionActionRow')?.get('margin')).toBe('0 calc(var(--dsh-sidebar-paint-inset) + 1px) 6px')
     expect(declarations(":global(html[data-platform='darwin']:not([data-fullscreen])) .root:not(.collapsed) > .topStrip > .toggle")?.get('transform')).toBe('translateX(4px)')
     expect(css).not.toContain(':not(.fading)')
-    expect(declarations(':global([data-windows-titlebar]) .root:not(.collapsed) .newSessionRow')?.get('margin-top')).toBe('6px')
-    expect(declarations(':global([data-windows-titlebar]) .root:not(.collapsed) .newSessionRow')?.has('margin-left')).toBe(false)
+    expect(declarations(':global([data-windows-titlebar]) .root:not(.collapsed) .sessionActionRow')?.get('margin-top')).toBe('6px')
+    expect(declarations(':global([data-windows-titlebar]) .root:not(.collapsed) .sessionActionRow')?.has('margin-left')).toBe(false)
     expect(declarations('.topStrip')?.get('height')).toBe('52px')
     expect(declarations('.root.collapsed')?.get('padding')).toBe('18px 10px 6px')
   })
@@ -140,49 +138,43 @@ describe('SidebarRoot.module.css', () => {
     expect(css).toMatch(/@keyframes rail-fade-in\s*\{\s*from\s*\{\s*opacity: 0;\s*}\s*}/)
   })
 
-  it('fades the New Session row through its slot anchor without reaching into either button', () => {
+  it('fades the session-action row through its slot anchor without reaching into an occupant', () => {
     // The row renders its content through the HOC slot, so the renderer's
-    // display:contents anchor is the row's only child; the shell's New-session
-    // button and the occupant's own controls are the anchor's children.
+    // display:contents anchor is the row's only child; whatever the seat's
+    // occupant contributes are the anchor's children.
     expect(declarations(ROW_CONTENT)?.get('animation')).toBe('rail-in 150ms var(--ds-ease-in-out) backwards')
     expect(reducedMotion()).toContain(ROW_CONTENT)
     for (const selector of declaredSelectors()) {
-      if (!selector.includes('.newSessionRow')) continue
+      if (!selector.includes('.sessionActionRow')) continue
       // A bare star under the row matches the boxless anchor, so nothing animates.
-      expect(selector).not.toMatch(/\.newSessionRow\s*>\s*\*/u)
-      // A second bare star step also matches .newSessionLabelMask and
-      // .newSessionShortcut inside the button, which would run rail-in twice on it.
+      expect(selector).not.toMatch(/\.sessionActionRow\s*>\s*\*/u)
+      // A second bare star step would also match an occupant's own inner
+      // wrappers, running rail-in twice on them.
       expect(selector).not.toMatch(/>\s*\*\s*>\s*\*/u)
-      expect(selector).not.toContain('.newSessionLabelMask')
-      expect(selector).not.toContain('.newSessionShortcut')
     }
   })
 
-  it('matches exactly the two buttons the slot anchor holds', () => {
-    // The renderer's outlet anchor is a display:contents div; the shell's
-    // New-session button and the occupant's control are its element children.
+  it('matches exactly the occupants the slot anchor holds', () => {
+    // The renderer's outlet anchor is a display:contents div; an occupant's own
+    // controls are its element children. The shell contributes none of its own.
     const { document } = new JSDOM(`
       <div class="railIn">
-        <div class="newSessionRow">
+        <div class="sessionActionRow">
           <div data-slot="sidebar.session.action" style="display: contents">
-            <button class="newSession">
-              <span class="newSessionLabelMask"><span class="newSessionContent"></span></span>
-              <span class="newSessionShortcut"></span>
-            </button>
+            <button class="occupantAction"></button>
             <button class="trigger"></button>
           </div>
         </div>
       </div>`).window
     const matched = [...document.querySelectorAll<HTMLElement>(ROW_CONTENT_SELECTOR)]
-    expect(matched.map(element => element.className)).toEqual(['newSession', 'trigger'])
+    expect(matched.map(element => element.className)).toEqual(['occupantAction', 'trigger'])
     // A bare child step matches only the boxless anchor, so nothing would animate.
-    expect(document.querySelectorAll('.railIn .newSessionRow > *')).toHaveLength(1)
+    expect(document.querySelectorAll('.railIn .sessionActionRow > *')).toHaveLength(1)
   })
 
   it('gives shell rail controls the same base anchor for their shared translation', () => {
     expect(declarations('.collapsed .logoRow')?.get('justify-content')).toBe('flex-start')
-    expect(declarations('.collapsed .newSessionRow')?.get('align-items')).toBe('flex-start')
-    expect(declarations('.collapsed .newSession')?.get('width')).toBe('36px')
+    expect(declarations('.collapsed .sessionActionRow')?.get('align-items')).toBe('flex-start')
   })
 
   it('keeps full-size brand artwork with a compact mark-to-name gap', () => {

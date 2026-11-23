@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Interface distante YXSpec",
+    "description": "Expose le modèle d’étapes ASPICE et l’état de chaque étape au client de bureau sous l’espace de noms yxspec."
+  }
+}

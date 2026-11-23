@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Despacho cego YXSpec",
+    "description": "Gera o prompt de função do worker, calcula seu hash e delega sem que o controlador leia o corpo."
+  }
+}

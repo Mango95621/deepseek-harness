@@ -52,3 +52,16 @@ native/system/test/bin/
 
 # Generated company-signed CUA release record.
 /packages/experimental/cua-macos/cua-helper.json
+
+# Scratch directories the test suite and tooling create next to themselves, and
+# which survive whenever a run is interrupted before its cleanup.
+apps/desktop/tests/cache-test-*/
+apps/desktop/tests/stage-test-*/
+packages/typert/generator/tests/.generated-schema-*/
+packages/typert/generator/tests/.generated-tools-*/
+/.dsh-sdk-client-relcwd-*/
+# tsx falls back to this literal path when TMPDIR reaches it as the string
+# "undefined", dropping its scratch files into the working tree.
+/undefined/
+# Ad-hoc run logs written to the root while chasing a failure.
+/.dw-run*.log

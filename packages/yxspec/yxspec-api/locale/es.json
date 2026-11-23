@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Interfaz remota de YXSpec",
+    "description": "Expone el modelo de etapas ASPICE y el estado de cada etapa al cliente de escritorio como el espacio de nombres yxspec."
+  }
+}

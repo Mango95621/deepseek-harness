@@ -69,7 +69,7 @@ function header(id: string, createdAt: number, options: Partial<Pick<SessionHead
 
 function workspace(path: string, sessionIds: string[] = [], title = 'Workspace'): WorkspaceRecord {
   return {
-    path,
+    roots: [path],
     title,
     sessionIds: sessionIds.map(SessionId),
     createdAt: '2026-01-01T00:00:00.000Z',
@@ -179,12 +179,39 @@ describe('read-only Session list tools', () => {
     const mounted = await mount({ workspaces: [['z-workspace', first], ['a-workspace', second]] })
     const rows = [first, second].map((record, index) => ({
       workspace_id: index === 0 ? 'z-workspace' : 'a-workspace',
-      title: record.title, path: record.path, created_at: record.createdAt, updated_at: record.updatedAt,
+      title: record.title, path: record.roots[0], created_at: record.createdAt, updated_at: record.updatedAt,
     }))
     expect(value(await mounted.call('list_workspace'))).toEqual(rows)
     expect(value(await mounted.call('list_workspace', { limit: 1, offset: 1 }))).toEqual([rows[1]])
     expect(value(await mounted.call('list_workspace', { offset: 2 }))).toEqual([])
     expect(value(await mounted.call('list_session'))).toEqual([])
+  })
+
+  it('lists a project named before its repositories with a null path', async () => {
+    // A project can exist with no repository root yet: it is named first and
+    // pointed at directories later. Its path is then `null`, not a missing
+    // field, so the consumer can tell "no directory yet" from "unknown".
+    const named: WorkspaceRecord = {
+      roots: [],
+      title: 'Vehicle platform',
+      sessionIds: [],
+      createdAt: '2026-01-01T00:00:00.000Z',
+      updatedAt: '2026-01-02T00:00:00.000Z',
+    }
+    const rootless = await mount({ workspaces: [['named', named]] })
+    expect(value(await rootless.call('list_workspace'))).toEqual([{
+      workspace_id: 'named',
+      title: 'Vehicle platform',
+      path: null,
+      created_at: named.createdAt,
+      updated_at: named.updatedAt,
+    }])
+
+    const rootedPath = await directory()
+    const withRoot = await mount({ workspaces: [['rooted', workspace(rootedPath, [], 'Rooted')]] })
+    expect(value(await withRoot.call('list_workspace'))).toEqual([
+      expect.objectContaining({ workspace_id: 'rooted', path: rootedPath }),
+    ])
   })
 
   it('uses current live metadata, cached cold metadata, and creation time for cache misses without opening logs', async () => {

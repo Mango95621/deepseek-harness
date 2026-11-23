@@ -467,6 +467,13 @@ function assertLeanChildRecord(agent: Agent): void {
  * The shipped Standard catalog, minus the ripgrep-dependent pair below.
  * Runtime inspection is read-only. Generated-code execution tools, external
  * MCP servers, and ralph are not enabled in this preset.
+ *
+ * `schemas()` answers from the scope declarations and deliberately does NOT
+ * evaluate a registration's `when`, so the YXSpec roster the Standard preset
+ * re-enables belongs here even though a session outside a YXSpec project never
+ * receives it: the project restriction is applied by `resolve()` on the way to
+ * the request header. `schedule_*` is the existing precedent for a preset-level
+ * row whose step-time guard is not visible from this read.
  */
 const EXPECTED_TOOLS = [
   'ask_user_question',
@@ -488,6 +495,9 @@ const EXPECTED_TOOLS = [
   'present',
   'read',
   'read_image',
+  'remote_build',
+  'remote_server_declare',
+  'remote_server_list',
   'schedule_create',
   'schedule_edit',
   'schedule_list',
@@ -507,6 +517,8 @@ const EXPECTED_TOOLS = [
   'web_search',
   'workflow',
   'write',
+  'yxspec_next',
+  'yxspec_status',
 ]
 
 /**

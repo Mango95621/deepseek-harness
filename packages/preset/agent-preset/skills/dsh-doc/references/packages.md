@@ -135,6 +135,7 @@ Every package below exports a Cordis plugin that a bundle patch can name in a Lo
 | `@deepseek-ai/dsh-client-ui-user-questions` | no | Web ask_user_question composer takeover and plan-review presentation UI |
 | `@deepseek-ai/dsh-client-ui-workflow-run` | no | Durable workflow-run Conversation Node and nested member disclosure for dsh web |
 | `@deepseek-ai/dsh-client-ui-workspace` | no | Workspace picker plugin: one WorkspacePicker registered into the sidebar and empty-state workspace slots |
+| `@deepseek-ai/dsh-client-ui-yxspec` | no | YXSpec process panel: renders the ASPICE stage model and each stage's artifact landing status from the `yxspec` Remote namespace |
 
 ## compaction
 
@@ -564,3 +565,16 @@ Every package below exports a Cordis plugin that a bundle patch can name in a Lo
 | Package | Config | Description |
 |---|---|---|
 | `@deepseek-ai/dsh-workspace` | no | Workspace entity registry (ctx.workspaceRegistry): durable workspace records with validated session attachment over the domain data form for the DeepSeek Harness |
+
+## yxspec
+
+| Package | Config | Description |
+|---|---|---|
+| `@deepseek-ai/dsh-yxspec` | yes | YXSpec capability seam: ctx.yxspec service owning the ASPICE stage model, dual-track (MCU/MPU) map, and spec identity for gated automotive R&D flows |
+| `@deepseek-ai/dsh-yxspec-api` | no | Host Remote owner: exposes the YXSpec ASPICE stage model and stage status to the desktop client as the `yxspec` namespace |
+| `@deepseek-ai/dsh-yxspec-artifact` | yes | YXSpec artifact ledger: the on-disk completion criterion that decides whether a flow step finished, replacing agent self-report |
+| `@deepseek-ai/dsh-yxspec-dispatch` | yes | YXSpec blind dispatch: renders a worker role prompt, hashes it, and delegates via ctx.subagents without the controller reading the rendered body |
+| `@deepseek-ai/dsh-yxspec-freeze` | yes | YXSpec freeze points: routes the ASPICE ❄ human-signoff steps through ctx.approval so an unattended flow fails closed instead of self-signing |
+| `@deepseek-ai/dsh-yxspec-gate` | yes | YXSpec stage gate: turns the ASPICE step gates from prose into host-level interception on tools/pre-execute |
+| `@deepseek-ai/dsh-yxspec-remote` | yes | YXSpec remote build verification: declared build servers and compile/verify runs executed against them over the platform's own OpenSSH client |
+| `@deepseek-ai/dsh-yxspec-step` | yes | YXSpec step driver: the model-facing yxspec_next/yxspec_status tools replacing the inject.py paper-feed loop, advancing one step at a time on disk evidence |

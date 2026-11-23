@@ -40,7 +40,12 @@ interface ProjectChoices {
 /** Label Workspaces as the Workspace list does and select the directory a new destination starts with. */
 export function projectChoices(workspaces: WorkspaceSnapshot['items'], defaultName: string): ProjectChoices {
   return {
-    items: workspaces.map(workspace => ({ value: workspace.path, label: workspaceDisplayTitle(workspace.title, defaultName) })),
+    // A project with no root yet offers no directory: choosing it would name a
+    // cwd that does not exist, so it is not a destination for a new Session.
+    items: workspaces.flatMap(workspace =>
+      workspace.path === null
+        ? []
+        : [{ value: workspace.path, label: workspaceDisplayTitle(workspace.title, defaultName) }]),
     defaultCwd: (workspaces.find(workspace => workspace.title === DEFAULT_WORKSPACE_DIRECTORY) ?? workspaces[0])?.path ?? '',
   }
 }

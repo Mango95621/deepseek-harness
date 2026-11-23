@@ -63,7 +63,7 @@ const sessions: SessionListState = {
 // arrives through its injected Set hooks, never through this seat.
 const workspaces: WorkspaceSnapshot = {
   items: [{
-    workspaceId: 'alpha' as WorkspaceId, path: '/projects/alpha', title: 'alpha', sessionIds: [one.id],
+    workspaceId: 'alpha' as WorkspaceId, roots: ['/projects/alpha'], path: '/projects/alpha', title: 'alpha', sessionIds: [one.id],
     createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:00:00.000Z',
   }],
   archivedSessionIds: [], pinnedSessionIds: [], state: 'idle', phase: 'ready', error: null,
@@ -657,7 +657,7 @@ describe('RowActionToast', () => {
     ['pinFailed', '置顶失败，请稍后重试'],
     ['unpinFailed', '取消置顶失败，请稍后重试'],
     ['archivedNotOpenable', '已归档对话暂时无法查看，请取消归档后查看'],
-    ['defaultWorkspaceFailed', '无法创建默认工作区，请通过“选择工作区”选择文件夹'],
+    ['defaultWorkspaceFailed', '无法创建默认项目，请通过“选择项目”选择文件夹'],
   ] as const)('shows the %s warning and takes it down when its hold ends', async (kind, text) => {
     const { dismissToast, notify } = await toastSurface()
     vi.useFakeTimers()

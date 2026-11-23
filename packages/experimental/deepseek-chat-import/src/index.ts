@@ -74,7 +74,17 @@ export default class DeepseekChatImportService extends TypertRemoteService {
       maxUploadBytes: config.maxUploadBytes,
       claim: () => this.claim(),
       // The registry lookup validates the wire id; an unknown id answers undefined.
-      workspace: id => ctx.workspaceRegistry.get(id as WorkspaceId),
+      // A project that declares no repository root yet has no working directory to
+      // import into, so it is refused here rather than mid-import.
+      workspace: (id) => {
+        const found = ctx.workspaceRegistry.get(id as WorkspaceId)
+        if (found === undefined || found.path === undefined) return undefined
+        return {
+          id: found.id,
+          path: found.path,
+          attachSession: sessionId => found.attachSession(sessionId),
+        }
+      },
       import: (archive, workspace, onProgress, signal) => importDeepseekChatExport({
         persistence: ctx.sessionPersistence,
         projectionCache: ctx.get('sessionProjectionCache'),

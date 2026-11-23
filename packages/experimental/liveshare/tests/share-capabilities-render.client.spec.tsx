@@ -8,7 +8,7 @@ const t = ((key: string) => key) as never
 const offered: readonly OfferedPlugin[] = [{
   plugin: 'mekGit',
   endpoints: ['mekGit/commit'],
-  descriptions: { 'mekGit/commit': '提交当前工作区' },
+  descriptions: { 'mekGit/commit': '提交当前项目' },
 }]
 
 describe('plugin method picker', () => {
@@ -26,7 +26,7 @@ describe('plugin method picker', () => {
         t={t}
       />,
     )
-    expect(screen.getByText('提交当前工作区')).toBeTruthy()
+    expect(screen.getByText('提交当前项目')).toBeTruthy()
     expect(screen.getByText('commit')).toBeTruthy()
     fireEvent.click(screen.getByRole('checkbox'))
     expect(onChange).toHaveBeenCalled()

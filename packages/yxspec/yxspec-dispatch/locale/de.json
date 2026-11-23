@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Blinde YXSpec-Zuweisung",
+    "description": "Erzeugt die Rollenanweisung des Workers, hasht sie und delegiert, ohne dass der Controller den Text liest."
+  }
+}

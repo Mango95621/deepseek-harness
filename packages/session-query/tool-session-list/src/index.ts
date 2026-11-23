@@ -24,7 +24,7 @@ const pagination = {
 export function apply(ctx: Context): void {
   ctx.tools.register(defineTool({
     name: 'list_workspace',
-    description: 'List workspaces in registry order, including empty workspaces. Returns IDs, titles, paths, and creation and update times.',
+    description: 'List workspaces in registry order, including empty workspaces. Returns IDs, titles, paths, and creation and update times. A workspace with no repository root yet reports a null path.',
     parameters: pagination,
     output: {
       schema: {
@@ -35,7 +35,11 @@ export function apply(ctx: Context): void {
           properties: {
             workspace_id: { type: 'string', required: true },
             title: { type: 'string', required: true },
-            path: { type: 'string', required: true },
+            path: {
+              oneOf: [{ type: 'string' }, { type: 'null' }],
+              required: true,
+              description: 'Primary repository root, or null when the workspace declares none yet.',
+            },
             created_at: { type: 'string', required: true, description: 'ISO 8601 creation time.' },
             updated_at: { type: 'string', required: true, description: 'ISO 8601 update time.' },
           },

@@ -277,6 +277,15 @@ export type WorkspaceBrowserInjected = {
     workspaceActionRequest: HostObservable<WorkspaceActionRequest | null>
     contextMenuTarget: HostObservable<ContextMenuTarget | null>
     /**
+     * Whether a guided project-creation flow can serve the add gesture.
+     *
+     * The add affordances exist when *either* route can answer the gesture: the composed
+     * directory flow, or an installed guide. They are independent plugins, so this rides its own
+     * source rather than being folded into `directoryFlow` — a deployment with a guide and no
+     * picker still has to offer the entry.
+     */
+    guidedCreation: HostObservable<boolean>
+    /**
      * Fixed Host facts, reached through a hook rather than injected as values:
      * the renderer memoizes an entry's inject result for the registration's
      * lifetime, so facts read there would freeze at whatever the first render

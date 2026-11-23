@@ -13,7 +13,7 @@ const FIRST: PermissionCatalog = {
 }
 const SECOND: PermissionCatalog = {
   defaultPreset: 'read-only', defaultOptions: [{ value: 'read-only', name: 'read-only' }, { value: 'workspace-write', name: 'workspace-write' }, { value: 'danger-full-access', name: 'danger-full-access' }],
-  options: [{ value: 'workspace-write', name: 'Workspace write' }],
+  options: [{ value: 'workspace-write', name: 'Project write' }],
 }
 
 interface GenerationDriver {

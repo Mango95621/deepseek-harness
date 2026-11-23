@@ -52,6 +52,14 @@ async function bench(runtime: 'web' | 'desktop' = 'desktop', platform: ShortcutP
   ctx.provide('remoteAccess', { source: () => access })
   const directory = createSnapshotStore(true)
   ctx.provide('slots', { entries: () => directory.getSnapshot() ? [{}] : [], subscribe: (_name: string, listener: () => void) => directory.subscribe(listener) })
+  // The guided-creation port. Not installed by default — the directory flow is the add route a
+  // deployment without a guide keeps — and installable mid-spec, because the two plugins load in
+  // either order and the claim reads the service lazily rather than freezing the answer at apply.
+  const guided = { begin: vi.fn(), cancel: vi.fn() }
+  let guidedDisposer: (() => void) | undefined
+  const installGuided = (): void => { guidedDisposer = ctx.provide('projectOnboarding', guided) }
+  const uninstallGuided = (): void => { guidedDisposer?.(); guidedDisposer = undefined }
+  onTestFinished(() => { uninstallGuided() })
   const locale = new LocaleRuntime(ctx)
   locale.register('workspace', { en, zh })
   locale.setLocale('en')
@@ -59,7 +67,12 @@ async function bench(runtime: 'web' | 'desktop' = 'desktop', platform: ShortcutP
   const navigation = {
     startSession: vi.fn(), forkSession: vi.fn(async () => 'fork-child' as SessionId), archiveSession: vi.fn(async (_sessionId: SessionId) => {}),
   }
-  const controls = createWorkspaceShortcutControls()
+  const controls = createWorkspaceShortcutControls(() => {
+    const service = ctx.get('projectOnboarding')
+    if (service === undefined) return false
+    service.begin()
+    return true
+  })
   const reportForkFailure = vi.fn()
   const markSession = vi.fn()
   const fiber = ctx.plugin((scoped) => {
@@ -71,7 +84,8 @@ async function bench(runtime: 'web' | 'desktop' = 'desktop', platform: ShortcutP
     [sid('a')]: row('a', id === 'a'), [sid('b')]: row('b', id === 'b'),
   } }) }
   return { ctx, fiber, registry, commands, navigation, controls, reportForkFailure, list, directory,
-    select, history, loadOlder, panelInfo, status, access, markSession, workspaces }
+    select, history, loadOlder, panelInfo, status, access, markSession, workspaces, guided,
+    installGuided, uninstallGuided }
 }
 
 afterEach(() => { vi.restoreAllMocks() })
@@ -170,6 +184,37 @@ describe('workspace shortcut ownership', () => {
     expect(b.registry.dispatch(key('KeyO'), context, consume).status).toBe('blocked')
   })
 
+  it('lets an installed guide claim the add gesture, and falls back to the picker without one', async () => {
+    const b = await bench()
+    // Without a guide the gesture is the directory flow's, exactly as before: the claim answers
+    // false and the menu request is what the surface acts on.
+    b.controls.add()
+    expect(b.controls.state.getSnapshot().addRequested).toBe(true)
+    b.controls.closeAdd()
+    b.installGuided()
+    b.controls.add()
+    // Claimed: the request is *not* raised, because there is no directory flow to open — the
+    // guide navigates instead, and a raised request would race that navigation.
+    expect(b.guided.begin).toHaveBeenCalledOnce()
+    expect(b.controls.state.getSnapshot().addRequested).toBe(false)
+    // Withdrawn again, the picker route is back: the two plugins load in either order and the
+    // claim reads the service per gesture rather than caching it.
+    b.uninstallGuided()
+    b.controls.add()
+    expect(b.controls.state.getSnapshot().addRequested).toBe(true)
+  })
+
+  it('keeps the add command available while a guide serves it and no picker is composed', async () => {
+    const b = await bench()
+    b.directory.set(false)
+    // The picker's absence is a hard block only while nothing else can serve the gesture: with a
+    // guide installed the command is handled, and pressing it claims as the button would.
+    expect(b.registry.dispatch(key('KeyO'), context, vi.fn()).status).toBe('blocked')
+    b.installGuided()
+    expect(b.registry.dispatch(key('KeyO'), context, vi.fn()).status).toBe('handled')
+    expect(b.guided.begin).toHaveBeenCalledOnce()
+  })
+
   it('captures rename and archive targets while the main Session changes', async () => {
     const b = await bench()
     for (const command of ['session.rename', 'session.archive']) {
@@ -232,7 +277,7 @@ it('opens an empty rename draft for unnamed history instead of its directory lab
   const b = await bench()
   const unnamed = row('a', true)
   delete unnamed.title
-  unnamed.displayTitle = 'Default workspace'
+  unnamed.displayTitle = 'Default project'
   b.list.set({ ...b.list.getSnapshot(), byId: { [unnamed.id]: unnamed } })
   const command = b.commands.get('session.rename')!.resolve(context)
   expect(command.status).toBe('handled')

@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Registro de artefatos YXSpec",
+    "description": "Mantém o registro de artefatos em disco que decide se uma etapa do fluxo terminou."
+  }
+}

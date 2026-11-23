@@ -184,6 +184,6 @@ This Dev Note is working context for maintainers: open questions and directions 
 
 #### Open: the `create(path, title?)` title parameter
 
-The `title` parameter has no production caller since the gateway's create-by-name branch was removed; a code TODO proposes dropping the parameter and its `@param` clause together ([note](../../../.agents/notes/archived/simplification/2026-07-31-one-route-to-add-a-workspace.md)).
+The `title` parameter is now the only thing naming a rootless project: the gateway's create-by-name branch was removed, and `create` regained a caller when a project could be created from its title before any directory is declared. Whether the parameter should stay on the registry method — rather than the caller supplying a title some other way — is still open, and the request shape that makes it required (`title` with no `path` or `roots`) is recent enough to revisit ([note](../../../.agents/notes/archived/simplification/2026-07-31-one-route-to-add-a-workspace.md)).
 
 </details>

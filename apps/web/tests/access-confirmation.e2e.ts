@@ -58,13 +58,13 @@ describe('web e2e: experimental Auto and Full access confirmation', () => {
     onTestFailed(() => saveFailureShot(page, 'web-e2e-auto-review-entry'))
     const access = page.locator('button[aria-label^="访问模式"]').first()
     await access.waitFor({ timeout: 10_000 })
-    expect(await access.getAttribute('aria-label')).toBe('访问模式，当前：工作区内修改')
+    expect(await access.getAttribute('aria-label')).toBe('访问模式，当前：项目内修改')
 
     await access.click()
     const currentMenu = page.getByRole('menu')
     await currentMenu.waitFor({ timeout: 10_000 })
     expect(await currentMenu.getByRole('menuitem').allTextContents())
-      .toEqual(['仅可查看', '工作区内修改', '完全权限', '自动审查EXP'])
+      .toEqual(['仅可查看', '项目内修改', '完全权限', '自动审查EXP'])
     await captureAutoReviewState(page, 'experimental-current-session-picker')
     const currentSnapshot = await captureStableAria(page, '[role="menu"]', scaffold.workspaceCwd)
     await compareOrRefreshGolden(CURRENT_SESSION_PICKER_EXPECTED, currentSnapshot, MODE)
@@ -91,7 +91,7 @@ describe('web e2e: experimental Auto and Full access confirmation', () => {
     await compareOrRefreshGolden(AUTO_CONFIRMATION_EXPECTED, confirmationSnapshot, MODE)
     await autoDialog.getByRole('button', { name: '取消' }).click()
     await expect.poll(() => autoDialog.count()).toBe(0)
-    expect(await access.getAttribute('aria-label')).toBe('访问模式，当前：工作区内修改')
+    expect(await access.getAttribute('aria-label')).toBe('访问模式，当前：项目内修改')
 
     const input = page.locator('[data-composer-input]').first()
     await writeComposerDraft(page, input, '/permission')
@@ -138,7 +138,7 @@ describe('web e2e: experimental Auto and Full access confirmation', () => {
     await writeComposerDraft(page, input, '/permission workspace-write')
     await input.press('Enter')
     await expect.poll(() => access.getAttribute('aria-label'), { timeout: 10_000 })
-      .toBe('访问模式，当前：工作区内修改')
+      .toBe('访问模式，当前：项目内修改')
     expect(await page.getByRole('dialog').count()).toBe(0)
     expect(tripwire.pageErrors).toEqual([])
   }, 60_000)
@@ -148,7 +148,7 @@ describe('web e2e: experimental Auto and Full access confirmation', () => {
     const access = page.locator('button[aria-label^="访问模式"]').first()
     await access.waitFor({ timeout: 10_000 })
 
-    expect(await access.getAttribute('aria-label')).toBe('访问模式，当前：工作区内修改')
+    expect(await access.getAttribute('aria-label')).toBe('访问模式，当前：项目内修改')
 
     await access.click()
     await page.getByRole('menuitem', { name: '完全权限' }).click()
@@ -200,7 +200,7 @@ describe('web e2e: experimental Auto and Full access confirmation', () => {
     expect(menuBox.width).toBeLessThanOrEqual(360)
     expect(menuBox.x).toBeGreaterThanOrEqual(0)
     expect(menuBox.x + menuBox.width).toBeLessThanOrEqual(420)
-    for (const name of ['仅可查看', '工作区内修改', '完全权限', '自动审查']) {
+    for (const name of ['仅可查看', '项目内修改', '完全权限', '自动审查']) {
       expect(await menu.getByText(name, { exact: true }).evaluate(node => node.scrollWidth <= node.clientWidth)).toBe(true)
     }
     await page.keyboard.press('Escape')
@@ -224,7 +224,7 @@ describe('web e2e: experimental Auto and Full access confirmation', () => {
     expect(slashBox.x + slashBox.width).toBeLessThanOrEqual(420)
     expect(await slash.evaluate(node => getComputedStyle(node).minWidth)).toBe('min(220px, 100%)')
     expect(await slash.evaluate(node => getComputedStyle(node).maxWidth)).toBe('100%')
-    for (const name of ['仅可查看', '工作区内修改', '完全权限', '自动审查']) {
+    for (const name of ['仅可查看', '项目内修改', '完全权限', '自动审查']) {
       expect(await slash.getByText(name, { exact: true }).evaluate(node => node.scrollWidth <= node.clientWidth)).toBe(true)
     }
     await page.keyboard.press('Escape')
@@ -262,14 +262,14 @@ describe('web e2e: experimental Auto and Full access confirmation', () => {
     await page.keyboard.press('Escape')
     await access.click()
     await expect.poll(() => page.getByRole('menuitem').allTextContents())
-      .toEqual(['仅可查看', '工作区内修改', '完全权限'])
+      .toEqual(['仅可查看', '项目内修改', '完全权限'])
     await captureAutoReviewState(page, 'uninstalled-current-session-picker')
     await page.keyboard.press('Escape')
     await entry.update({ disabled: false })
     await scaffold.ctx.loader.await()
     await access.click()
     await expect.poll(() => page.getByRole('menuitem').allTextContents())
-      .toEqual(['仅可查看', '工作区内修改', '完全权限', '自动审查EXP'])
+      .toEqual(['仅可查看', '项目内修改', '完全权限', '自动审查EXP'])
     expect(await access.getAttribute('aria-label')).toBe('访问模式，当前：完全权限')
     await captureAutoReviewState(page, 'reinstalled-current-session-picker')
     await page.keyboard.press('Escape')
@@ -313,7 +313,7 @@ describe('web e2e: default permission choices', () => {
     const access = page.locator('button[aria-label^="访问模式"]').first()
     await access.click()
     await expect.poll(() => page.getByRole('menuitem').allTextContents())
-      .toEqual(['仅可查看', '工作区内修改', '完全权限'])
+      .toEqual(['仅可查看', '项目内修改', '完全权限'])
     await captureAutoReviewState(page, 'default-current-session-picker')
     await page.keyboard.press('Escape')
     const input = page.locator('[data-composer-input]').first()

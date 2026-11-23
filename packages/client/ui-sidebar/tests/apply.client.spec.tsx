@@ -34,10 +34,8 @@ async function bench(declare = true) {
   if (ctx === undefined) throw new Error('the sidebar fixture owner did not activate')
   await ctx.plugin(SlotRegistry).await()
   const layout = { toggleSidebar: vi.fn(), selectPanel: vi.fn() }
-  const uiWorkspace = { startSession: vi.fn() }
   ctx.provide('shortcuts', { catalog: createSnapshotStore([]) } as never)
   ctx.provide('layout', layout)
-  ctx.provide('uiWorkspace', uiWorkspace as never)
   ctx.provide('locale', new LocaleRuntime(ctx))
   const slots = ctx.get('slots') as SlotRegistry
   if (declare) {
@@ -50,7 +48,7 @@ async function bench(declare = true) {
       SidebarFrame,
     )
   }
-  return { ctx, slots, layout, uiWorkspace }
+  return { ctx, slots, layout }
 }
 
 describe('ui-sidebar apply', () => {
@@ -59,7 +57,7 @@ describe('ui-sidebar apply', () => {
   })
 
   it('declares only the services it uses', () => {
-    expect(inject).toEqual(['slots', 'layout', 'uiWorkspace', 'locale', 'shortcuts'])
+    expect(inject).toEqual(['slots', 'layout', 'locale', 'shortcuts'])
   })
 
   it('registers the shell and declares its child seats', async () => {
@@ -86,22 +84,45 @@ describe('ui-sidebar apply', () => {
     expect(leading[0]!.locale).toBe('sidebar')
     expect(leading[0]!.inject).toBe(b.slots.entries('sidebar')[0]!.inject)
     const injected = (b.slots.entries('sidebar')[0]!.inject as () => SidebarRootInjected)()
-    expect(Object.keys(injected)).toEqual(['startSession', 'toggleSidebar', 'selectPanel', 'setPinned', 'trackEntryClick', 'hooks'])
+    expect(Object.keys(injected)).toEqual(['toggleSidebar', 'selectPanel', 'setPinned', 'trackEntryClick', 'hooks'])
     expect(injected.hooks.panels.getSnapshot()).toEqual([])
     expect(injected.hooks.entryPins.getSnapshot()).toEqual([])
     expect(injected.hooks.entryActions.getSnapshot()).toBe(false)
+    // The shell renders no New Session control of its own: the seat's
+    // occupancy is the whole signal, and this composition leaves it empty.
+    expect(injected.hooks.sessionActions.getSnapshot()).toBe(false)
     expect(b.slots.entries('main')).toEqual([])
-    // Both arms delegate to the Workspace UI's shared New Session action.
-    injected.startSession('workspace' as never)
-    expect(b.uiWorkspace.startSession).toHaveBeenCalledWith('workspace')
-    injected.startSession()
-    expect(b.uiWorkspace.startSession).toHaveBeenLastCalledWith(undefined)
     injected.toggleSidebar()
     expect(b.layout.toggleSidebar).toHaveBeenCalledOnce()
     const panelId = 'custom-panel' as MainPanelId
     injected.selectPanel(panelId)
     expect(b.layout.selectPanel).toHaveBeenCalledExactlyOnceWith(panelId)
     expectTypeOf<Parameters<SidebarRootInjected['selectPanel']>[0]>().toEqualTypeOf<MainPanelId>()
+  })
+
+  it('tracks the session-action seat occupancy for the row gate', async () => {
+    const b = await bench()
+    const sidebar = b.ctx.plugin({ inject: [...inject], apply })
+    await sidebar.await()
+    const injected = (b.slots.entries('sidebar')[0]!.inject as () => SidebarRootInjected)()
+    expect(injected.hooks.sessionActions.getSnapshot()).toBe(false)
+    const occupant = b.ctx.plugin({
+      inject: ['slots'],
+      apply(ctx: Context) {
+        ctx.slots.inject('sidebar.session.action', () => ctx.slots.register(
+          { name: 'sidebar.session.action', id: 'test.occupant' }, () => null,
+        ))
+      },
+    })
+    try {
+      await occupant.await()
+      await vi.waitFor(() => { expect(injected.hooks.sessionActions.getSnapshot()).toBe(true) })
+      await occupant.dispose()
+      await vi.waitFor(() => { expect(injected.hooks.sessionActions.getSnapshot()).toBe(false) })
+    } finally {
+      await occupant.dispose()
+      await sidebar.dispose()
+    }
   })
 
   it('forwards entry clicks to the optional product analytics service without tracking panel selection', async () => {

@@ -1,6 +1,6 @@
 /** Window-chrome controls for the fully hidden sidebar (frame shell.leading seat). */
 import {
-  IconNewChatOutlineRegular, IconPanelLeftOutlineRegular, Tooltip,
+  IconPanelLeftOutlineRegular, Tooltip,
 } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { InjectFace, PropsLocale, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 // Type-only: pulls the frame's shell.leading slot declaration.
@@ -15,20 +15,19 @@ export type HeaderLeadingControlsProps =
   & PropsLocale<'sidebar'>
 
 /**
- * Sidebar-open and New Session controls in the frame's window-chrome seat.
- * The frame mounts this seat for hidden sidebars and owns its placement.
- * Web shows only the sidebar opener; Desktop also retains New Session.
- * @param props - Injected sidebar actions, the global access Hook, and the sidebar locale seat.
- * @returns the sidebar toggle, plus New Session on Desktop while access allows `session/create`.
+ * The sidebar opener in the frame's window-chrome seat, which the frame mounts
+ * only while the column is fully hidden. Starting a Session is the workspace
+ * browser's own per-project control rather than a shell affordance, so this seat
+ * carries no New Session button on any platform — a titlebar control would have
+ * to guess the project, which is the guess the browser's per-row action exists
+ * to avoid.
+ * @param props - Injected sidebar actions, the global shortcut catalog, and the sidebar locale seat.
+ * @returns the sidebar toggle.
  */
 export function HeaderLeadingControls({
-  toggleSidebar, startSession, trackEntryClick, useRemoteAccess, useShortcuts, t,
+  toggleSidebar, useShortcuts, t,
 }: HeaderLeadingControlsProps) {
-  // A page whose access snapshot excludes starting a Session keeps only the sidebar toggle here.
-  const canStartSession = useRemoteAccess('session/create')
-  const desktop = document.documentElement.hasAttribute('data-platform')
   const shortcut = useShortcuts(rows => rows.find(row => row.id === 'sidebar.left.toggle'))
-  const newShortcut = useShortcuts(rows => rows.find(row => row.id === 'session.new'))
   return (
     <div className={css.controls}>
       <Tooltip label={t('toggle.open')} shortcutKeys={shortcut?.keys} delayMs={500}>
@@ -43,22 +42,6 @@ export function HeaderLeadingControls({
           <IconPanelLeftOutlineRegular size={16} />
         </button>
       </Tooltip>
-      {desktop && canStartSession && (
-        <Tooltip label={t('session.new.label')} shortcutKeys={newShortcut?.keys} delayMs={500}>
-          <button
-            type="button"
-            className={css.iconButton}
-            aria-label={t('session.new.label')}
-            aria-keyshortcuts={newShortcut?.aria}
-            onClick={() => {
-              trackEntryClick({ menu_name: 'new_session', position: 'titlebar' })
-              startSession()
-            }}
-          >
-            <IconNewChatOutlineRegular size={16} />
-          </button>
-        </Tooltip>
-      )}
     </div>
   )
 }

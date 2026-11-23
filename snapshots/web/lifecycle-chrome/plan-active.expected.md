@@ -6,11 +6,11 @@
   - button "Automation tasks"
   - button "Unpin Automation tasks from sidebar"
   - button "More"
-- text: Workspaces
+- text: Projects
 - button "Search sessions"
 - textbox "Search session names"
 - button "View options"
-- button "Add workspace"
+- button "Add project"
 - tree "Sessions":
   - treeitem "workspace" [expanded]
   - treeitem "New Session" [selected]
@@ -18,11 +18,11 @@
 - banner:
   - button "Open right sidebar"
 - text: Into the Unknown Preview
-- button "Choose workspace": workspace
+- button "Choose project": workspace
 - button "Standard mode"
 - textbox "Describe what you want to build, / commands, @ files or sessions"
 - button "Add files or run commands"
-- 'button "Access mode, current: Workspace Write"': Workspace Write
+- 'button "Access mode, current: Project Write"': Project Write
 - button "Plan mode on, press to turn off": Plan
 - button "Select model, current DeepSeek-V4-Flash": DeepSeek-V4-Flash
 - button "Send message" [disabled]

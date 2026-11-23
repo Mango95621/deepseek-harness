@@ -29,5 +29,9 @@ export async function browserWorkspace(source: WorkspaceSource, sessionId: strin
   }
   signal.throwIfAborted()
   const workspace = source.getSnapshot().items.find(item => item.sessionIds.some(id => id === sessionId))
-  return workspace === undefined ? `session:${sessionId}` : `cwd:${workspace.path}`
+  // A rootless project has no canonical cwd to key storage by, so it falls back
+  // to the session-scoped account exactly as an ungrouped session does.
+  return workspace === undefined || workspace.path === null
+    ? `session:${sessionId}`
+    : `cwd:${workspace.path}`
 }

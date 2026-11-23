@@ -292,10 +292,23 @@ type SessionTreeProps = Pick<
   revealSessionId?: SessionId | undefined
   /** Acknowledge that the chosen Session row has been revealed. */
   onSessionRevealed: (sessionId: SessionId) => void
+  /**
+   * Supplies the placeholder's add-project action. Set only where the caller
+   * knows an empty list means no project exists at all (the tree body), so the
+   * flat body — empty for narrower reasons — never grows the action.
+   */
+  onAddWorkspace?: (() => void) | undefined
 }
 
 /** The list-empty placeholder — a glyph over the text; the archived-only view names its filter and offers the way back. */
-function EmptySessions({ rowState, onLeaveArchivedOnly, t }: Pick<SessionTreeProps, 'rowState' | 'onLeaveArchivedOnly' | 't'>) {
+function EmptySessions({ rowState, onLeaveArchivedOnly, onAddWorkspace, t }: Pick<SessionTreeProps, 'rowState' | 'onLeaveArchivedOnly' | 't'> & {
+  /**
+   * Open the project picker. Supplied only by the seat that knows the list is
+   * empty because no project exists — there the placeholder is the one place
+   * left to start from, so it carries the action rather than only the text.
+   */
+  onAddWorkspace?: (() => void) | undefined
+}) {
   const archivedOnly = rowState.archivedFilter === 'only'
   return (
     <div className={css.emptyState} data-row-key="empty">
@@ -304,6 +317,11 @@ function EmptySessions({ rowState, onLeaveArchivedOnly, t }: Pick<SessionTreePro
       {archivedOnly && (
         <button type="button" className={css.emptyAction} onClick={onLeaveArchivedOnly}>
           {t('empty.viewOthers')}
+        </button>
+      )}
+      {!archivedOnly && onAddWorkspace !== undefined && (
+        <button type="button" className={css.emptyAction} onClick={onAddWorkspace}>
+          {t('empty.chooseProject')}
         </button>
       )}
     </div>
@@ -321,6 +339,7 @@ function SessionTree({
   nestWorkspaces, groupExpansion, setGroupExpanded,
   setSessionOrder, home, t,
   revealSessionId, onSessionRevealed, shortcuts,
+  onAddWorkspace,
 }: SessionTreeProps) {
   const panelActive = usePanelInfo(info => info.activePanelId !== null)
   const statuses = useSessionStatus(s => s)
@@ -350,9 +369,14 @@ function SessionTree({
   }, [current, currentGroup, setGroupExpanded, groupExpansion])
   const parents = useMemo(() => {
     if (!nestWorkspaces) return new Map<string, WorkspaceId | undefined>()
-    const keysByPath = new Map(workspaces.map(workspace => [workspace.path, workspace.workspaceId]))
+    // A project with no repository root yet has no path to nest by, so it stays
+    // a top-level row until its first root is attached.
+    const located = workspaces.flatMap(workspace => workspace.path === null
+      ? []
+      : [{ workspaceId: workspace.workspaceId, path: workspace.path }])
+    const keysByPath = new Map(located.map(workspace => [workspace.path, workspace.workspaceId]))
     const paths = [...keysByPath.keys()]
-    return new Map<string, WorkspaceId | undefined>(workspaces.map((workspace) => {
+    return new Map<string, WorkspaceId | undefined>(located.map((workspace) => {
       const path = owningParentFolder(workspace.path, paths)
       return [workspace.workspaceId, path === undefined ? undefined : keysByPath.get(path)]
     }))
@@ -666,7 +690,12 @@ function SessionTree({
         resetKey={JSON.stringify([animationResetKey, watermarkMotionKey])}
       >
         {groups.length === 0 && (
-          <EmptySessions rowState={rowState} onLeaveArchivedOnly={onLeaveArchivedOnly} t={t} />
+          <EmptySessions
+            rowState={rowState}
+            onLeaveArchivedOnly={onLeaveArchivedOnly}
+            {...onAddWorkspace !== undefined ? { onAddWorkspace } : {}}
+            t={t}
+          />
         )}
         {groupRows}
       </AnimatedRows>
@@ -678,6 +707,7 @@ function SessionTree({
 function FlatList({
   list, sessionIds, rowState, onLeaveArchivedOnly, useSessionStatus, useSessionAccess, open, onSessionRenameRequest,
   usePanelInfo, setSessionOrder, workspaceReady, animationResetKey,
+  onAddWorkspace,
   revealSessionId, onSessionRevealed, renderSlot, renderFactorySlot, useContextMenuTarget, useContextMenu, home, t,
 }: Pick<
   SessionTreeProps,
@@ -695,6 +725,7 @@ function FlatList({
   | 'onSessionRevealed'
   | 'rowState'
   | 'onLeaveArchivedOnly'
+  | 'onAddWorkspace'
   | 'home'
   | 't'
 > & {
@@ -732,7 +763,12 @@ function FlatList({
         resetKey={animationResetKey}
       >
         {rows.length === 0 && (
-          <EmptySessions rowState={rowState} onLeaveArchivedOnly={onLeaveArchivedOnly} t={t} />
+          <EmptySessions
+            rowState={rowState}
+            onLeaveArchivedOnly={onLeaveArchivedOnly}
+            {...onAddWorkspace !== undefined ? { onAddWorkspace } : {}}
+            t={t}
+          />
         )}
         {rows.map((node) => {
           const active = drag !== null && drag.pinned === node.pinned
@@ -927,6 +963,7 @@ export function WorkspaceBrowser({
   searchSessions,
   searchResultLimit,
   useDirectoryFlow,
+  useGuidedCreation,
   useHostInfo,
   useShortcuts,
   useWorkspaceShortcuts,
@@ -962,6 +999,11 @@ export function WorkspaceBrowser({
   // Live occupancy of this surface's directory-flow hole (the same source the
   // flow reads): a composition without a picking affordance can add nothing.
   const directoryFlowAvailable = useDirectoryFlow(occupied => occupied)
+  // A guided creation is the other route the add gesture can take, and the two are independent
+  // plugins: the entry is offered while *either* can serve it, and a deployment with a guide and
+  // no picker would otherwise have no way to create a project at all.
+  const guidedCreation = useGuidedCreation(available => available)
+  const addAvailable = directoryFlowAvailable || guidedCreation
   const groupBy = useStore(s => s.groupBy)
   const orderBy = useStore(s => s.orderBy)
   // Persisted view blobs written before the archived filter existed rehydrate
@@ -980,6 +1022,14 @@ export function WorkspaceBrowser({
   }
   const leaveArchivedOnly = (): void => { actions.setArchivedFilter('default') }
   const workspaceReady = workspacePhase === 'ready' && workspaceStreamState !== 'loading'
+  // The sidebar no longer owns a New Session control, so a Host with no
+  // project has nothing to start from except the list placeholder. Offer the
+  // picker there — and only there: once a project exists the placeholder means
+  // "no Sessions", which adding another project would not fix. A composition
+  // with no directory-picker has nothing to offer either way.
+  const emptyAddWorkspace = addAvailable && workspaceReady && workspaces.length === 0
+    ? requestAddWorkspace
+    : undefined
   const mainSessionId = Object.values(list.byId)
     .find(session => (session.retainedBy.mainView ?? 0) > 0)?.id
   const currentBlank = mainSessionId !== undefined && list.byId[mainSessionId]?.blank === true
@@ -1305,10 +1355,10 @@ export function WorkspaceBrowser({
               t={t}
             />
           )}
-          {/* Adding is the button's one action, so a composition with no
-              picking affordance has nothing to offer here: the region hides the
-              button rather than leaving a dead one in the header. */}
-          {directoryFlowAvailable && (
+          {/* Adding is the button's one action, so a composition with neither a
+              picking affordance nor a guide has nothing to offer here: the region
+              hides the button rather than leaving a dead one in the header. */}
+          {addAvailable && (
             <Tooltip label={t('workspace.add')} shortcutKeys={addShortcut?.keys} side="bottom" delayMs={500} portal>
               <button
                 ref={wsPlusRef}
@@ -1394,6 +1444,7 @@ export function WorkspaceBrowser({
                 onLeaveArchivedOnly={leaveArchivedOnly}
                 workspaceReady={workspaceReady}
                 animationResetKey={`${groupBy}/${orderBy}/${archivedFilter}`}
+                onAddWorkspace={emptyAddWorkspace}
                 useSessionStatus={useSessionStatus}
                 open={guardedOpen}
                 onSessionRenameRequest={requestSessionRename}
@@ -1432,6 +1483,7 @@ export function WorkspaceBrowser({
                 startSession={startSession}
                 open={guardedOpen}
                 insertWorkspaceBefore={insertWorkspaceBefore}
+                onAddWorkspace={emptyAddWorkspace}
                 revealSessionId={revealSessionId}
                 onSessionRevealed={acknowledgeSessionReveal}
                 home={home}

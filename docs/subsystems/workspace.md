@@ -2,7 +2,7 @@
 
 English | [中文](workspace.zh.md)
 
-A workspace is the persistent record of a directory the user works in: a stable id over a canonical path, a display title, and the ordered account of sessions that belong to it. The subsystem is one package ([dsh-workspace](../../packages/workspace/workspace), `ctx.workspaceRegistry`) — an optional host-side capability, not part of the agent-loop spine, and adds no model-visible surface of its own (no tools, no prompt text, no session events); the optional [listing tools](../../packages/session-query/tool-session-list) expose Workspace IDs, titles, and paths to models that are granted them. It stores its records through the [storage domain form](storage.md) and validates session membership against [`SessionHeader.cwd`](persistence.md#sessionheader--metadata-beside-the-log), so `storageDomain` and `sessionPersistence` are mandatory startup dependencies: an unavailable persistence peer leaves the plugin pending rather than being mistaken for an empty history. Design record: [domain KV storage Agent Note](../../.agents/notes/proposed/architecture/2026-07-24-domain-kv-storage-and-workspace.md); bootstrap and GUI ordering: [Workspace UI product-flow Agent Note](../../.agents/notes/archived/feature/2026-07-25-workspace-ui-product-flow.md).
+A workspace is the persistent record of a project the user works in: a stable id over its repository roots, a display title, and the ordered account of sessions that belong to it. The subsystem is one package ([dsh-workspace](../../packages/workspace/workspace), `ctx.workspaceRegistry`) — an optional host-side capability, not part of the agent-loop spine, and adds no model-visible surface of its own (no tools, no prompt text, no session events); the optional [listing tools](../../packages/session-query/tool-session-list) expose Workspace IDs, titles, and paths to models that are granted them. It stores its records through the [storage domain form](storage.md) and validates session membership against [`SessionHeader.cwd`](persistence.md#sessionheader--metadata-beside-the-log), so `storageDomain` and `sessionPersistence` are mandatory startup dependencies: an unavailable persistence peer leaves the plugin pending rather than being mistaken for an empty history. Design record: [domain KV storage Agent Note](../../.agents/notes/proposed/architecture/2026-07-24-domain-kv-storage-and-workspace.md); bootstrap and GUI ordering: [Workspace UI product-flow Agent Note](../../.agents/notes/archived/feature/2026-07-25-workspace-ui-product-flow.md).
 
 Source: [`packages/workspace/workspace/src/types.ts`](../../packages/workspace/workspace/src/types.ts)
 
@@ -16,7 +16,7 @@ Source: [`packages/workspace/workspace/src/types.ts`](../../packages/workspace/w
 type WorkspaceId = Branded<'WorkspaceId'>
 ```
 
-`WorkspaceId` is a [branded id](core.md#branded-ids). Path identity is separate: `realpathNormalize` (`fs.realpath`; trailing slashes, `..`, and symlinks resolved) is the one uniqueness canon — workspace paths are stored canonicalized, uniqueness is string equality of canonical paths (a symlink to an owned directory collides), and attach-time session cwd checks go through the same canon.
+`WorkspaceId` is a [branded id](core.md#branded-ids). Path identity is separate: `realpathNormalize` (`fs.realpath`; trailing slashes, `..`, and symlinks resolved) is the one canon every root is stored and compared under, whether it was declared at create time or appended later, and attach-time session cwd checks go through the same canon.
 
 ## The workspace entity
 
@@ -24,24 +24,48 @@ Consumers see only the `Workspace` interface; the implementation stays package-p
 
 ```ts type-equiv
 /**
- * One workspace: a stable id over an existing directory, a display title, and
- * an ordered candidate account of sessions. Membership validates header cwd
- * against the workspace path, but preserves an existing account when its
- * fully qualified cwd is missing. Consumers only see this interface; the
- * implementation stays private.
+ * One project: a stable id over zero or more existing code-repository
+ * directories, a display title, and an ordered candidate account of sessions.
+ * Membership validates header cwd against the project's roots, but preserves
+ * an existing account when its fully qualified cwd is missing. Consumers only
+ * see this interface; the implementation stays private.
  */
 interface Workspace {
   /** Stable record id (generated uuid). */
   readonly id: WorkspaceId
 
   /**
-   * Canonical directory path: the `fs.realpath` of the path given at create
-   * time (trailing slashes, `..`, and symlinks all resolved). Never rewritten
-   * afterwards, even when the directory disappears (see {@link status}).
+   * Every canonical repository root of this project, in the order the user
+   * declared them: each is the `fs.realpath` of the path given at create time
+   * (trailing slashes, `..`, and symlinks all resolved). Never rewritten
+   * afterwards, even when a directory disappears (see {@link status}).
+   *
+   * A vehicle electronics project normally spans several repositories — an IVI
+   * application, MCU firmware, and a vendored AOSP tree — so this is almost
+   * always longer than one. The first entry is the primary root.
+   *
+   * Empty for a project that has been named but not yet pointed at any
+   * repository. That is a normal intermediate state rather than an error: a
+   * project's directories are declared after its identity, and a caller that
+   * needs a working directory must decide what to do without one instead of
+   * silently inheriting the project directory.
    */
-  readonly path: string
+  readonly roots: readonly string[]
 
-  /** Display title. Defaults to the final path segment, or a filesystem root's own spelling; duplicates are allowed. */
+  /**
+   * The primary root: `roots[0]`. This is the working directory every session
+   * created against this project gets, and the base for relative paths and
+   * file-tree display.
+   *
+   * `undefined` while {@link roots} is empty. It is its own accessor because
+   * the overwhelming majority of consumers want exactly this one path and
+   * should not have to index an array; the `undefined` is what forces those
+   * consumers to handle the not-yet-configured project rather than assume a
+   * directory exists.
+   */
+  readonly path: string | undefined
+
+  /** Display title. Defaults to the final path segment of the primary root; duplicates are allowed. */
   readonly title: string
 
   /** ISO-8601 creation instant, stamped at create and never rewritten. */
@@ -77,13 +101,13 @@ interface Workspace {
   setTitle(title: string): Promise<void>
 
   /**
-   * Prepend a session to this workspace's candidate account. An already
+   * Prepend a session to this project's candidate account. An already
    * accounted id resolves without writing, aside from the durable
    * filtered-candidate prune every accepted mutation performs. A new id's
    * live or persisted
-   * header cwd must resolve to an existing directory equal to {@link path};
-   * unknown ids, missing or invalid cwd values, and mismatches reject without
-   * writing.
+   * header cwd must resolve to an existing directory equal to one of
+   * {@link roots}; unknown ids, missing or invalid cwd values, and mismatches
+   * reject without writing.
    * @param sessionId - The session to record.
    * @returns resolution after durability.
    */
@@ -114,22 +138,22 @@ interface Workspace {
   detachSession(sessionId: SessionId): Promise<void>
 
   /**
-   * Live directory check, uncached: whether {@link path} currently exists and
-   * is a directory. A missing directory never mutates the record — the
-   * directory may only be temporarily moved.
-   * @returns `'ok'` when the directory exists, `'missing-dir'` otherwise.
+   * Live directory check, uncached: whether every one of {@link roots}
+   * currently exists and is a directory. A missing directory never mutates the
+   * record — the directory may only be temporarily moved.
+   * @returns `'ok'` when every root exists, `'missing-dir'` otherwise.
    */
   status(): Promise<'ok' | 'missing-dir'>
 }
 ```
 
-Ownership truth is the record's ordered `sessionIds`, never derived from session cwd. Membership validates the recorded header cwd against the workspace path; an existing candidate remains owned when its fully qualified cwd fails resolution or directory stat with `ENOENT`. This preserves missing-directory and dangling-symlink accounts without admitting new sessions. Failed writes reject (`insertSessionBefore` account errors as `WorkspaceMoveInvalidError`, storage failures as plain errors); every accepted mutation stamps `updatedAt` and durably prunes candidates that no longer pass the membership check.
+Ownership truth is the record's ordered `sessionIds`, never derived from session cwd. Membership validates the recorded header cwd against the project's declared roots; an existing candidate remains owned when its fully qualified cwd fails resolution or directory stat with `ENOENT`. This preserves missing-directory and dangling-symlink accounts without admitting new sessions. Failed writes reject (`insertSessionBefore` account errors as `WorkspaceMoveInvalidError`, storage failures as plain errors); every accepted mutation stamps `updatedAt` and durably prunes candidates that no longer pass the membership check.
 
 ## The registry: `ctx.workspaceRegistry`
 
-`WorkspaceRegistry` ([signatures](#ctxworkspaceregistry--workspaceregistry)) owns registration and resolution. `create(path, title?)` requires a fully qualified path, canonicalizes it, rejects a nonexistent path (the original `ENOENT`) or a non-directory, returns the existing entity unchanged when the canonical path is already owned, and otherwise creates a record with `title ?? defaultWorkspaceTitle(path)` prepended to the durable registry order (different canonical paths may share a display title, and a path with no final segment uses its root spelling). `get(id)` and the ordered `list()` are synchronous cache reads; `resolveByPath(path)` applies the same fully qualified realpath canon without creating. `delete(id)` removes only the registration, order entry, and session account — the directory, user files, live sessions, and persisted logs are never touched, so those sessions become Ungrouped ([reference](../../packages/workspace/workspace/README.md)); unknown ids return `false`. Create and delete persist a pending-mutation marker before their two writes (record + order) can diverge; startup resolves exactly the marked mutation — by deleting the marked table row, which completes an interrupted delete and rolls back an interrupted create (the registration is re-creatable, so rollback is the safe direction) — and an unmarked order/table mismatch fails loud as corruption.
+`WorkspaceRegistry` ([signatures](#ctxworkspaceregistry--workspaceregistry)) owns registration and resolution. `create(path, title?)` accepts one fully qualified directory, several (primary first), or none: every path is canonicalized and a relative, nonexistent, or non-directory path rejects (the original `ENOENT`), and a call naming neither a directory nor a title rejects. Reuse matches on the **primary** root, so a call whose first path is already owned returns that project unchanged; a rootless call has nothing to match on and always creates. A new record carries `title ?? defaultWorkspaceTitle(primary)`, required when no root supplies one, and is prepended to the durable registry order (different projects may share a display title, and a primary root with no final segment uses its root spelling). `get(id)` and the ordered `list()` are synchronous cache reads; `resolveByPath(path)` applies the same fully qualified realpath canon without creating. `delete(id)` removes only the registration, order entry, and session account — the directory, user files, live sessions, and persisted logs are never touched, so those sessions become Ungrouped ([reference](../../packages/workspace/workspace/README.md)); unknown ids return `false`. Create and delete persist a pending-mutation marker before their two writes (record + order) can diverge; startup resolves exactly the marked mutation — by deleting the marked table row, which completes an interrupted delete and rolls back an interrupted create (the registration is re-creatable, so rollback is the safe direction) — and an unmarked order/table mismatch fails loud as corruption.
 
-Sessions get their cwd at create time from whoever creates them, not from this registry — the API gateway resolves a new session's cwd from the chosen workspace's `path` (falling back to an explicit or default cwd), creates the session so the cwd lands in its immutable [`SessionHeader`](persistence.md#sessionheader--metadata-beside-the-log), then calls `attachSession`, which re-validates that stored header cwd against the workspace path. On the first successful start, the registry bootstraps history from persisted headers alone (`id`, `cwd`, `createdAt` — never event bodies), grouping sessions with a valid canonical cwd into per-directory workspaces, newest first; the initialized marker is written last so an interrupted bootstrap resumes safely. The bootstrap is one-time: cwd-less legacy sessions stay Ungrouped, and sessions created afterwards join a workspace only through `attachSession`.
+Sessions get their cwd at create time from whoever creates them, not from this registry — the API gateway resolves a new session's cwd from the chosen workspace's `path` (falling back to an explicit or default cwd), creates the session so the cwd lands in its immutable [`SessionHeader`](persistence.md#sessionheader--metadata-beside-the-log), then calls `attachSession`, which re-validates that stored header cwd against the project's declared roots. On the first successful start, the registry bootstraps history from persisted headers alone (`id`, `cwd`, `createdAt` — never event bodies), grouping sessions with a valid canonical cwd into per-directory workspaces, newest first; the initialized marker is written last so an interrupted bootstrap resumes safely. The bootstrap is one-time: cwd-less legacy sessions stay Ungrouped, and sessions created afterwards join a workspace only through `attachSession`.
 
 ## Default Workspace initialization
 
@@ -358,11 +382,28 @@ Host service backing the generated `ctx.remote.workspace` namespace.
 
 ```ts cordis-catalog
 /**
- * Create or idempotently resolve one Workspace over an existing directory.
- * @param request - directory path to register.
- * @returns the Workspace and whether this call created it.
+ * Create or idempotently resolve one project.
+ *
+ * Naming no directory creates a project from its title alone; its repositories
+ * are attached afterwards through {@link addRoot}.
+ * @param request - one directory path, the root list (primary first), or neither plus a title.
+ * @returns the project and whether this call created it.
  */
 @Remote('create') create(request: WorkspaceCreateRequest): Promise<WorkspaceCreateValue>
+
+/**
+ * Append a repository root to an existing project.
+ * @param request - project identity and the directory to append.
+ * @returns the updated project projection.
+ */
+@Remote('addRoot') addRoot(request: WorkspaceAddRootRequest): Promise<WorkspaceValue>
+
+/**
+ * Drop a repository root from a project.
+ * @param request - project identity and the directory to drop.
+ * @returns the updated project projection.
+ */
+@Remote('removeRoot') removeRoot(request: WorkspaceRemoveRootRequest): Promise<WorkspaceValue>
 
 /**
  * Initialize or reuse the default Workspace during first-use startup. The
@@ -529,17 +570,62 @@ Durable workspace registry. Startup waits for `sessionPersistence`, builds one c
 
 ```ts cordis-catalog
 /**
- * Create or reuse a workspace for an existing directory. The fully qualified
- * path is canonicalized through `fs.realpath`; a relative, nonexistent, or
- * non-directory path rejects. Repeated calls for the same canonical path
- * return the existing entity without changing its title.
- * A newly created workspace is prepended to the durable registry order.
- * Different canonical paths may share a display title.
- * @param path - Existing directory to own, in a fully qualified path spelling.
- * @param title - Display title used only when a new record is created.
- * @returns the existing or newly durable workspace.
+ * Create a project, optionally over one or more existing code-repository
+ * directories. Every fully qualified path is canonicalized through
+ * `fs.realpath`; a relative, nonexistent, or non-directory path rejects.
+ * The caller may pass one path or many: a single-root project is the common
+ * case, and a multi-root project is how one delivery unit tracks, say, an
+ * IVI application, MCU firmware, and a vendored AOSP tree together. The
+ * first path is the primary root and becomes the working directory of every
+ * session created against this project.
+ *
+ * An **empty** list creates a project with no repositories, which is the
+ * shape a client uses when it asks for the project's name first and its
+ * directories afterwards. Such a project carries a title but no primary
+ * root; see {@link Workspace.path}. A title is then required, because the
+ * primary root's final segment is the default title and there is none.
+ *
+ * Reuse matches on the **primary** root, so it applies only to a call that
+ * names one: repeated calls whose first path canonicalizes to an existing
+ * project's primary root return that project without changing its roots or
+ * title. A project with no roots is never reused this way — it has no path
+ * to match on — and a rootless call therefore always creates. A newly
+ * created project is prepended to the durable registry order. Different
+ * projects may share a display title.
+ * @param path - One existing directory, an array whose first entry is the primary root, or an empty array for a project whose repositories are not declared yet.
+ * @param title - Display title; required when `path` is empty, since there is no root to derive one from.
+ * @returns the existing or newly durable project.
  */
-async create(path: string, title?: string): Promise<Workspace>
+async create(path: string | readonly string[], title?: string): Promise<Workspace>
+
+/**
+ * Add one repository root to an existing project. The path is canonicalized
+ * like {@link create}; a root already declared by this project resolves
+ * without writing, and a primary-root match is left where it is (an added
+ * root always appends, so the primary never changes by accident).
+ * @param id - The project to extend.
+ * @param path - Existing directory to append as a root.
+ * @returns resolution after durability.
+ */
+async addRoot(id: WorkspaceId, path: string): Promise<void>
+
+/**
+ * Remove one repository root from a project. Removing a root the project
+ * does not declare resolves without writing.
+ *
+ * Removing the **last** root leaves the project with none, which is the
+ * state it had before its first repository was declared: the project keeps
+ * its identity and its title and carries no working directory. Deleting the
+ * project is the separate operation for "no longer tracked" — dropping its
+ * directories is how a caller reconfigures which repositories it spans.
+ *
+ * Any session working in the removed root is detached by the same write, so
+ * the account never names a directory the project no longer declares.
+ * @param id - The project to narrow.
+ * @param path - Directory to drop.
+ * @returns resolution after durability.
+ */
+async removeRoot(id: WorkspaceId, path: string): Promise<void>
 
 /**
  * Initialize the default Workspace only while both the registry and Session
@@ -641,10 +727,12 @@ unpinSession(sessionId: SessionId): Promise<void>
 
 /**
  * Resolve by canonical directory path without creating or mutating a
- * workspace. A missing path rejects during `realpath`; an existing unowned
- * directory returns `undefined`.
+ * project. A missing path rejects during `realpath`; an existing unowned
+ * directory returns `undefined`. A path matching any declared root resolves
+ * — including a secondary root, so a caller holding an MCU-firmware path
+ * still finds the project whose primary root is the IVI application.
  * @param path - Existing directory path in a fully qualified spelling.
- * @returns the workspace owning the canonical path, when one exists.
+ * @returns the project declaring the canonical path as one of its roots, when one exists.
  */
 async resolveByPath(path: string): Promise<Workspace | undefined>
 ```

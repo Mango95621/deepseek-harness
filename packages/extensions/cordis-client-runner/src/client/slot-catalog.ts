@@ -1224,6 +1224,7 @@ export const CLIENT_SLOT_API: readonly ClientSlotEntry[] = [
     declaredBy: 'factory \'conversation.content\' (client-ui-conversation), so it exists while that definition is registered',
     occupants: [
       'client-ui-brand-official PixelWhale id \'pixel-whale\'',
+      'client-ui-yxspec OnboardingWizard id \'yxspec-onboarding\'',
     ],
     replaceRisk: 'wraps-owner-content',
     example: 'return {\n  inject: [\'slots\'],\n  apply(ctx) {\n    ctx.slots.inject(\'conversation.hero.frame\', () => ctx.slots.register(\n      { name: \'conversation.hero.frame\', id: \'my-layer\', order: 100 },\n      ({ children }) => React.createElement(\'div\', null, children),\n    ))\n  },\n}',
@@ -2595,6 +2596,7 @@ export const CLIENT_SLOT_API: readonly ClientSlotEntry[] = [
       'client-ui-jobs JobsSection id \'background-jobs\'',
       'client-ui-session-panel EnvironmentSection id \'environment\'',
       'client-ui-subagent SubagentsSection id \'subagents\'',
+      'client-ui-yxspec YxspecSection id \'yxspec\'',
       'experimental-client-ui-forge ChangeRequestsSection id \'change-requests\'',
     ],
     replaceRisk: 'none',
@@ -4760,7 +4762,7 @@ export const CLIENT_SLOT_API: readonly ClientSlotEntry[] = [
     ],
     replaceRisk: 'shadows-shipped-ui',
     example: 'return {\n  inject: [\'slots\'],\n  apply(ctx) {\n    ctx.slots.inject(\'sidebar.brand.mark\', () => ctx.slots.register(\n      { name: \'sidebar.brand.mark\' },\n      () => React.createElement(\'div\', null, \'hello\'),\n    ))\n  },\n}',
-    source: 'packages/client/ui-sidebar/src/client/contract/slots.ts:37',
+    source: 'packages/client/ui-sidebar/src/client/contract/slots.ts:36',
   },
   {
     key: 'sidebar.brand.name',
@@ -4795,7 +4797,7 @@ export const CLIENT_SLOT_API: readonly ClientSlotEntry[] = [
     ],
     replaceRisk: 'shadows-shipped-ui',
     example: 'return {\n  inject: [\'slots\'],\n  apply(ctx) {\n    ctx.slots.inject(\'sidebar.brand.name\', () => ctx.slots.register(\n      { name: \'sidebar.brand.name\' },\n      () => React.createElement(\'div\', null, \'hello\'),\n    ))\n  },\n}',
-    source: 'packages/client/ui-sidebar/src/client/contract/slots.ts:42',
+    source: 'packages/client/ui-sidebar/src/client/contract/slots.ts:41',
   },
   {
     key: 'sidebar.chat.conversation',
@@ -4889,7 +4891,7 @@ export const CLIENT_SLOT_API: readonly ClientSlotEntry[] = [
     ],
     replaceRisk: 'none',
     example: 'return {\n  inject: [\'slots\'],\n  apply(ctx) {\n    ctx.slots.inject(\'sidebar.footer.action\', () => ctx.slots.register(\n      { name: \'sidebar.footer.action\', id: \'my-entry\', order: 100, label: \'My entry\' },\n      () => React.createElement(\'div\', null, \'hello\'),\n    ))\n  },\n}',
-    source: 'packages/client/ui-sidebar/src/client/contract/slots.ts:75',
+    source: 'packages/client/ui-sidebar/src/client/contract/slots.ts:74',
   },
   {
     key: 'sidebar.panellist',
@@ -4943,7 +4945,7 @@ export const CLIENT_SLOT_API: readonly ClientSlotEntry[] = [
     ],
     replaceRisk: 'none',
     example: 'return {\n  inject: [\'slots\'],\n  apply(ctx) {\n    ctx.slots.inject(\'sidebar.panellist\', () => ctx.slots.register(\n      { name: \'sidebar.panellist\', id: \'my-entry\', order: 100, label: \'My entry\' },\n      () => React.createElement(\'div\', null, \'hello\'),\n    ))\n  },\n}',
-    source: 'packages/client/ui-sidebar/src/client/contract/slots.ts:47',
+    source: 'packages/client/ui-sidebar/src/client/contract/slots.ts:46',
   },
   {
     key: 'sidebar.panellist.actions',
@@ -4998,7 +5000,7 @@ export const CLIENT_SLOT_API: readonly ClientSlotEntry[] = [
     ],
     replaceRisk: 'none',
     example: 'return {\n  inject: [\'slots\'],\n  apply(ctx) {\n    ctx.slots.inject(\'sidebar.panellist.actions\', () => ctx.slots.register(\n      { name: \'sidebar.panellist.actions\', id: \'my-entry\', order: 100, label: \'My entry\' },\n      () => React.createElement(\'div\', null, \'hello\'),\n    ))\n  },\n}',
-    source: 'packages/client/ui-sidebar/src/client/contract/slots.ts:49',
+    source: 'packages/client/ui-sidebar/src/client/contract/slots.ts:48',
   },
   {
     key: 'sidebar.right.pane.tab',
@@ -5674,8 +5676,8 @@ export const CLIENT_SLOT_API: readonly ClientSlotEntry[] = [
     key: 'sidebar.session.action',
     kind: 'hoc',
     scope: 'root',
-    summary: 'HOC layer around the inner content of the New-session row — the Tooltip and button the shell passes as `children`, rendered only while the Peer may create Sessions.',
-    doc: 'HOC layer around the inner content of the New-session row — the Tooltip\nand button the shell passes as `children`, rendered only while the Peer\nmay create Sessions. An occupant receives that content and returns it,\npossibly wrapped, together with its own controls, so it decorates the\nrow without adding a wrapper element. Occupants nest around the content\ninstead of rendering beside it: one that adds nothing must return\n`children`, and with no occupant the content renders unchanged.\nDeclared by this package\'s \'sidebar\' entry.',
+    summary: 'Optional contributions filling the seat below the brand row.',
+    doc: 'Optional contributions filling the seat below the brand row. The shell\nitself renders no New-session control — starting a Session is the\nworkspace browser\'s own per-project action — so this row exists only\nwhile some plugin occupies the slot. Declared by this package\'s\n\'sidebar\' entry; an occupant receives `children: null` and owns the\nwhole row, and with no occupant the shell renders no row at all.',
     registerOptions: [
       {
         name: 'id',
@@ -5721,7 +5723,7 @@ export const CLIENT_SLOT_API: readonly ClientSlotEntry[] = [
     ],
     replaceRisk: 'wraps-owner-content',
     example: 'return {\n  inject: [\'slots\'],\n  apply(ctx) {\n    ctx.slots.inject(\'sidebar.session.action\', () => ctx.slots.register(\n      { name: \'sidebar.session.action\', id: \'my-layer\', order: 100 },\n      ({ children }) => React.createElement(\'div\', null, children),\n    ))\n  },\n}',
-    source: 'packages/client/ui-sidebar/src/client/contract/slots.ts:86',
+    source: 'packages/client/ui-sidebar/src/client/contract/slots.ts:83',
   },
   {
     key: 'sidebar.session.row.hover',
@@ -5922,7 +5924,7 @@ export const CLIENT_SLOT_API: readonly ClientSlotEntry[] = [
     ],
     replaceRisk: 'shadows-shipped-ui',
     example: 'return {\n  inject: [\'slots\'],\n  apply(ctx) {\n    ctx.slots.inject(\'sidebar.settings\', () => ctx.slots.register(\n      { name: \'sidebar.settings\' },\n      () => React.createElement(\'div\', null, \'hello\'),\n    ))\n  },\n}',
-    source: 'packages/client/ui-sidebar/src/client/contract/slots.ts:70',
+    source: 'packages/client/ui-sidebar/src/client/contract/slots.ts:69',
   },
   {
     key: 'sidebar.toggle.badge',
@@ -5954,7 +5956,7 @@ export const CLIENT_SLOT_API: readonly ClientSlotEntry[] = [
     ],
     replaceRisk: 'shadows-shipped-ui',
     example: 'return {\n  inject: [\'slots\'],\n  apply(ctx) {\n    ctx.slots.inject(\'sidebar.toggle.badge\', () => ctx.slots.register(\n      { name: \'sidebar.toggle.badge\' },\n      () => React.createElement(\'div\', null, \'hello\'),\n    ))\n  },\n}',
-    source: 'packages/client/ui-sidebar/src/client/contract/slots.ts:31',
+    source: 'packages/client/ui-sidebar/src/client/contract/slots.ts:30',
   },
   {
     key: 'sidebar.workspaces',
@@ -5988,7 +5990,7 @@ export const CLIENT_SLOT_API: readonly ClientSlotEntry[] = [
     ],
     replaceRisk: 'shadows-shipped-ui',
     example: 'return {\n  inject: [\'slots\'],\n  apply(ctx) {\n    ctx.slots.inject(\'sidebar.workspaces\', () => ctx.slots.register(\n      { name: \'sidebar.workspaces\' },\n      () => React.createElement(\'div\', null, \'hello\'),\n    ))\n  },\n}',
-    source: 'packages/client/ui-sidebar/src/client/contract/slots.ts:58',
+    source: 'packages/client/ui-sidebar/src/client/contract/slots.ts:57',
   },
   {
     key: 'sidebar.workspaces.directoryFlow',

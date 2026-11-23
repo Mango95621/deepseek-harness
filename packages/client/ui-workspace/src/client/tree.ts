@@ -350,7 +350,7 @@ function groupByWorkspace(
     // a Workspace without archived Sessions contributes no group.
     if (archivedFilter === 'only' && members.length === 0) continue
     groups.push(buildGroup(
-      workspace.workspaceId, workspace.workspaceId, workspace.path,
+      workspace.workspaceId, workspace.workspaceId, workspace.path ?? undefined,
       Date.parse(workspace.createdAt), workspace.title, members,
     ))
   }

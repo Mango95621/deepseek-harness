@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "YXSpec プロセスパネル",
+    "description": "yxspec リモート名前空間から ASPICE ステージモデルと各ステージの成果物着地状況を描画します。"
+  }
+}

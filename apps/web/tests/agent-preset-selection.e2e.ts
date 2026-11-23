@@ -25,7 +25,7 @@ import {
   webSnapshotMode, type WebScaffold,
 } from './scaffold.ts'
 import { openSettings,
-  connectFreshWorkspace, newEnglishPage, saveFailureShot, writeComposerDraft,
+  connectFreshWorkspace, newEnglishPage, saveFailureShot, startSessionIn, writeComposerDraft,
 } from './support.ts'
 import { brandString } from '@deepseek-ai/dsh-brand'
 
@@ -382,13 +382,15 @@ describe('web e2e: agent-preset selection', () => {
     await page.keyboard.press('Escape')
     await expect.poll(async () => (await scaffold.ctx.agentPresets.remoteExportList()).presets.find(preset => preset.isDefault)?.id).toBe('standard')
 
-    // The current Session is still the Workspace's only blank, so New Session names it for
-    // reuse and the Host runs it under the reset default instead of its kept Minimal mode.
+    // The current Session is still the Workspace's only blank, so the project
+    // row's New Session action names it for reuse and the Host runs it under
+    // the reset default instead of its kept Minimal mode. The shell owns no
+    // New Session control, so the action lives on the project's own row.
     const currentSessionId = await page.evaluate(() =>
       (JSON.parse(localStorage.getItem('dsh.sessions.current') ?? '{}') as { sessionId?: string }).sessionId)
     expect(currentSessionId).toBeDefined()
     const creation = page.waitForResponse('**/api/session/create')
-    await page.getByRole('button', { name: 'New session', exact: true }).last().click()
+    await startSessionIn(page, 'workspace')
     const created = await creation
     expect(created.request().postDataJSON()).toHaveProperty('payload.args.request.sessionId', currentSessionId)
     expect(created.request().postDataJSON()).not.toHaveProperty('payload.args.request.agentPreset')
@@ -507,11 +509,13 @@ it.each([false, true])('starts Creator from Plugins with Coding Tools=%s without
     creator.session.append('turn/end', { turn: 1, reason: { kind: 'completed' } })
     await scaffold.ctx.sessions.flush(creator.session)
     await page.getByText('Creator fixture completed without a model call.', { exact: true }).waitFor()
-    // New Session returns to the Standard blank and its unsent draft.
-    const newSession = page.getByRole('button', { name: 'New session', exact: true }).filter({ hasText: 'New Session' })
-    const [reopening] = await Promise.all([page.waitForResponse('**/api/session/create'), newSession.click()])
-    expect(reopening.request().postDataJSON()).toHaveProperty('payload.args.request.sessionId', standard.id)
-    expect(await reopening.json()).toMatchObject({ result: { ok: true, value: { sessionId: standard.id, agentPreset: 'standard' } } })
+    // The project row's action returns to the Standard blank and its unsent draft.
+    const reopening = page.waitForResponse('**/api/session/create')
+    await startSessionIn(page, 'workspace')
+    const reopenedResponse = await reopening
+    expect(reopenedResponse.request().postDataJSON()).toHaveProperty('payload.args.request.sessionId', standard.id)
+    expect(await reopenedResponse.json())
+      .toMatchObject({ result: { ok: true, value: { sessionId: standard.id, agentPreset: 'standard' } } })
     await composerOf(standard.id).filter({ hasText: draft }).waitFor()
     expect(await composerOf(standard.id).innerText()).toBe(draft)
     const reopened = scaffold.ctx.agents.get(standard.id)

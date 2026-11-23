@@ -56,6 +56,19 @@
       "@deepseek-ai/dsh-client-ui-account-notifications/client": ["./packages/client/ui-account-notifications/src/client/index.ts"],
       "@deepseek-ai/dsh-client-ui-settings-account": ["./packages/client/ui-settings-account/src/index.ts"],
       "@deepseek-ai/dsh-client-ui-settings-account/client": ["./packages/client/ui-settings-account/src/client/index.ts"],
+      "@deepseek-ai/dsh-client-ui-yxspec": ["./packages/client/ui-yxspec/src/index.ts"],
+      "@deepseek-ai/dsh-client-ui-yxspec/client": ["./packages/client/ui-yxspec/src/client/index.ts"],
+      // The YXSpec host packages' subpath exports resolve to real source files, so they need
+      // hand-written aliases exactly like every other `/types` subpath in this file. The
+      // generated region below covers bare specifiers only: without these, a consumer's
+      // `.../types` import falls through to the built declaration under `lib/`, and the typert
+      // analyzer then cannot map the module back to the source it is supposed to analyse.
+      "@deepseek-ai/dsh-yxspec/types": ["./packages/yxspec/yxspec/src/types.ts"],
+      "@deepseek-ai/dsh-yxspec/project": ["./packages/yxspec/yxspec/src/project.ts"],
+      "@deepseek-ai/dsh-yxspec/tool-output": ["./packages/yxspec/yxspec/src/tool-output.ts"],
+      "@deepseek-ai/dsh-yxspec-api/types": ["./packages/yxspec/yxspec-api/src/types.ts"],
+      "@deepseek-ai/dsh-yxspec-remote/types": ["./packages/yxspec/yxspec-remote/src/types.ts"],
+      "@deepseek-ai/dsh-yxspec-remote/tools": ["./packages/yxspec/yxspec-remote/src/tools.ts"],
       "@deepseek-ai/dsh-api-gateway/stream-protocol": ["./packages/api/gateway/src/stream-protocol.ts"],
       "@deepseek-ai/dsh-deepseek-account": ["./packages/account/deepseek-account/src/index.ts"],
       "@deepseek-ai/dsh-deepseek-account/types": ["./packages/account/deepseek-account/src/types.ts"],
@@ -660,7 +673,15 @@
       "@deepseek-ai/dsh-workflow-ptc": ["./packages/workflow/workflow-ptc/src"],
       "@deepseek-ai/dsh-working-directory": ["./packages/session/working-directory/src"],
       "@deepseek-ai/dsh-workspace": ["./packages/workspace/workspace/src"],
-      "@deepseek-ai/dsh-workspace-changes": ["./packages/deliverables/workspace-changes/src"]
+      "@deepseek-ai/dsh-workspace-changes": ["./packages/deliverables/workspace-changes/src"],
+      "@deepseek-ai/dsh-yxspec": ["./packages/yxspec/yxspec/src"],
+      "@deepseek-ai/dsh-yxspec-api": ["./packages/yxspec/yxspec-api/src"],
+      "@deepseek-ai/dsh-yxspec-artifact": ["./packages/yxspec/yxspec-artifact/src"],
+      "@deepseek-ai/dsh-yxspec-dispatch": ["./packages/yxspec/yxspec-dispatch/src"],
+      "@deepseek-ai/dsh-yxspec-freeze": ["./packages/yxspec/yxspec-freeze/src"],
+      "@deepseek-ai/dsh-yxspec-gate": ["./packages/yxspec/yxspec-gate/src"],
+      "@deepseek-ai/dsh-yxspec-remote": ["./packages/yxspec/yxspec-remote/src"],
+      "@deepseek-ai/dsh-yxspec-step": ["./packages/yxspec/yxspec-step/src"]
       // END generated package aliases
     }
   }

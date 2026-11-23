@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Controlador de pasos YXSpec",
+    "description": "Ofrece las herramientas de paso para el modelo que avanzan el flujo paso a paso según la evidencia en disco."
+  }
+}

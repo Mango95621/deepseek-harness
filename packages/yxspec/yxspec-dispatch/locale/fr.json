@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Dispatching aveugle YXSpec",
+    "description": "Génère l’invite de rôle du worker, la hache et la délègue sans que le contrôleur lise le corps."
+  }
+}

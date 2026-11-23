@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "YXSpec 阶段门控",
+    "description": "把 ASPICE 步骤门从文档约定变为工具执行前的宿主级拦截。"
+  }
+}

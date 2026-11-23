@@ -18,7 +18,8 @@ import {
   webSnapshotMode, type WebScaffold,
 } from './scaffold.ts'
 import {
-  connectFreshWorkspaceZh, hideSessionPanel, saveFailureShot, sessionPanelToggle, showSessionPanel, writeComposerDraft, ZH_BROWSER_LOCALE,
+  connectFreshWorkspaceZh, hideSessionPanel, saveFailureShot, sessionPanelToggle, showSessionPanel, startSessionIn,
+  writeComposerDraft, ZH_BROWSER_LOCALE,
 } from './support.ts'
 
 declare global {
@@ -730,7 +731,7 @@ it.skipIf(MODE === 'record')('reads local Git with full access when the sandbox 
   await page.locator('[data-forge-diff-file="README.md"]').getByText('changed', { exact: true }).waitFor()
 
   await permission.click()
-  await page.getByRole('menuitem', { name: '工作区内修改', exact: true }).click()
+  await page.getByRole('menuitem', { name: '项目内修改', exact: true }).click()
   await showSessionPanel(page)
   await failed.getByText('无法读取 Git 信息', { exact: true }).waitFor({ timeout: 20_000 })
   await expect.poll(async () => (await readPersistedEvents(scaffold, sessionId))
@@ -1375,7 +1376,7 @@ it.skipIf(MODE === 'record')('shows the local changes of the Session by scope an
   const position = await scrollport.evaluate(element => element.scrollTop)
   expect(position).toBeGreaterThan(0)
   const originalFile = await panelFile.elementHandle()
-  await page.getByRole('button', { name: /^(?:New session|新.*会话)$/ }).last().click()
+  await startSessionIn(page, 'workspace', 'zh')
   await expect.poll(() => view.isVisible()).toBe(false)
   await page.locator(`[data-row-key="session:${sessionId}"]`).click()
   await panelFile.getByText('export const n6 = 6', { exact: true }).first().waitFor({ timeout: 20_000 })

@@ -39,7 +39,12 @@ describe('navigation without a selected Session', () => {
       }
       const tripwire = watchConsole(page)
       await page.goto(scaffold.authenticatedUrl, { waitUntil: 'load' })
-      await page.getByRole('textbox', { name: 'Choose workspace', exact: true }).waitFor()
+      // The mounted shell's own control is the readiness signal this lane
+      // needs: the sidebar toggle belongs to the frame rather than to any
+      // hero, wizard, or project state, so it is present exactly when the
+      // shell is. (What fills the conversation body before a Session exists
+      // is a composition detail this scenario must not depend on.)
+      await page.getByRole('button', { name: 'Collapse sidebar', exact: true }).waitFor({ timeout: 30_000 })
       const sessionHeader = page.locator('[data-slot="conversation.session.header"]')
       expect(await sessionHeader.count()).toBe(0)
       const header = page.locator('[data-slot="conversation.header"] > header')
@@ -52,7 +57,10 @@ describe('navigation without a selected Session', () => {
       expect(await sessionHeader.count()).toBe(0)
       expect(await header.evaluate(element => element.getBoundingClientRect().height)).toBe(40)
       if (platform === 'darwin') {
-        expect(await page.locator('[data-shell-leading]').getByRole('button', { name: 'New session', exact: true }).isVisible()).toBe(true)
+        // The window-chrome seat carries the sidebar opener alone: starting a
+        // Session is the workspace browser's per-project row action, and a
+        // titlebar control would have to guess which project it belongs to.
+        expect(await page.locator('[data-shell-leading]').getByRole('button', { name: 'New session', exact: true }).count()).toBe(0)
       }
       // The open label precedes both the column slide and the rail's mount animation.
       // Reverse the pointer action only after the rendered sidebar has settled.

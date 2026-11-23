@@ -206,7 +206,7 @@ function ImportDialog(
               disabled={running}
               aria-haspopup="menu"
               aria-expanded={pickerOpen}
-              title={workspace?.path}
+              title={workspace?.path ?? undefined}
               onClick={() => { setPickerOpen(open => !open) }}
             >
               <IconFolderCloseRegular size={16} />

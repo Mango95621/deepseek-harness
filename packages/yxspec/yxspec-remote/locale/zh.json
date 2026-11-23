@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "YXSpec 远程构建",
+    "description": "声明构建服务器，并通过平台自带的 OpenSSH 客户端在其上执行编译或验证命令。"
+  }
+}

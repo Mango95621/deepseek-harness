@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Compilation distante YXSpec",
+    "description": "Déclare des serveurs de compilation et y exécute des commandes de compilation ou de vérification via le client OpenSSH de la plateforme."
+  }
+}

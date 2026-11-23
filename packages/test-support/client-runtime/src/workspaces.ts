@@ -3,6 +3,7 @@ import { createSnapshotStore } from '@deepseek-ai/dsh-client-store'
 import type {
   IWorkspaces, WorkspaceId, WorkspaceSnapshot, WorkspaceView,
 } from '@deepseek-ai/dsh-api-workspace-controller/client'
+import type { WorkspaceCreateRequest } from '@deepseek-ai/dsh-api-workspace-controller/types'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import type { SnapshotStore } from '@deepseek-ai/dsh-client-store'
 import { workspaceSnapshot } from './fixtures.ts'
@@ -10,6 +11,26 @@ import type { FixtureSnapshot, Stabilizer } from './fixtures.ts'
 
 /** Writable test representation of the immutable Workspace Controller snapshot. */
 type WorkspaceFixtureSnapshot = FixtureSnapshot<WorkspaceSnapshot>
+
+/**
+ * A complete Workspace projection for the echo defaults below. Every field the
+ * production row carries is filled, so a new required field breaks this double
+ * at compile time instead of being asserted past.
+ * @param workspaceId - project identity.
+ * @param fields - the row's variable parts; `createdAt`/`updatedAt` default to a fixed instant.
+ * @returns the projection.
+ */
+function echoView(
+  workspaceId: WorkspaceId,
+  fields: { title: string; path: string | null; roots: readonly string[]; sessionIds: readonly SessionId[] },
+): WorkspaceView {
+  return {
+    workspaceId,
+    ...fields,
+    createdAt: '2026-01-01T00:00:00.000Z',
+    updatedAt: '2026-01-01T00:00:00.000Z',
+  }
+}
 
 /** Callable command names on the production Workspace Controller face. */
 type WorkspaceAction = {
@@ -65,19 +86,59 @@ export class TestWorkspaces implements IWorkspaces {
   /**
    * Create a Workspace (recorded). The default echoes a view derived from
    * the input; stub for failure or list-coupled flows.
-   * @param input - the Host create payload.
+   * @param input - the Host create payload: one directory, or the root list.
    * @returns the created Workspace view.
    */
-  async create(input: { path: string }): Promise<WorkspaceView> {
+  async create(input: WorkspaceCreateRequest): Promise<WorkspaceView> {
     this.calls.push({ method: 'create', args: [input] })
     const stub = this.stubs.get('create')
     if (stub !== undefined) return await (stub(input) as Promise<WorkspaceView>)
-    return {
-      workspaceId: `ws-${input.path}` as WorkspaceId,
-      title: input.path,
-      path: input.path,
+    // A multi-root create reports the whole list; the primary root is the first entry, which
+    // is also what the single-directory form carries as `path`.
+    const roots = input.roots ?? (input.path === undefined ? [] : [input.path])
+    const primary = roots[0]
+    return echoView(`ws-${primary ?? ''}` as WorkspaceId, {
+      title: primary ?? '',
+      path: primary ?? null,
+      roots,
       sessionIds: [],
-    } as unknown as WorkspaceView
+    })
+  }
+
+  /**
+   * Append a repository root to an existing project (recorded). The default
+   * echoes a view carrying the appended root.
+   * @param workspaceId - project to extend.
+   * @param path - directory to append as a non-primary root.
+   * @returns the updated project view.
+   */
+  async addRoot(workspaceId: WorkspaceId, path: string): Promise<WorkspaceView> {
+    this.calls.push({ method: 'addRoot', args: [workspaceId, path] })
+    const stub = this.stubs.get('addRoot')
+    if (stub !== undefined) return await (stub(workspaceId, path) as Promise<WorkspaceView>)
+    const existing = this.list.getSnapshot().items.find(item => item.workspaceId === workspaceId)
+    const roots = [...existing?.roots ?? [], path]
+    return echoView(workspaceId, {
+      title: existing?.title ?? path, path: roots[0] ?? null, roots, sessionIds: [],
+    })
+  }
+
+  /**
+   * Drop a repository root from a project (recorded). The default echoes a
+   * view without the dropped root.
+   * @param workspaceId - project to shrink.
+   * @param path - directory to drop.
+   * @returns the updated project view.
+   */
+  async removeRoot(workspaceId: WorkspaceId, path: string): Promise<WorkspaceView> {
+    this.calls.push({ method: 'removeRoot', args: [workspaceId, path] })
+    const stub = this.stubs.get('removeRoot')
+    if (stub !== undefined) return await (stub(workspaceId, path) as Promise<WorkspaceView>)
+    const existing = this.list.getSnapshot().items.find(item => item.workspaceId === workspaceId)
+    const roots = (existing?.roots ?? []).filter(root => root !== path)
+    return echoView(workspaceId, {
+      title: existing?.title ?? path, path: roots[0] ?? null, roots, sessionIds: [],
+    })
   }
 
   /**
@@ -101,7 +162,7 @@ export class TestWorkspaces implements IWorkspaces {
     this.calls.push({ method: 'rename', args: [workspaceId, title] })
     const stub = this.stubs.get('rename')
     if (stub !== undefined) return await (stub(workspaceId, title) as Promise<WorkspaceView>)
-    return { workspaceId, title, path: `/${title}`, sessionIds: [] } as unknown as WorkspaceView
+    return echoView(workspaceId, { title, path: `/${title}`, roots: [`/${title}`], sessionIds: [] })
   }
 
   /**
@@ -134,7 +195,7 @@ export class TestWorkspaces implements IWorkspaces {
     this.calls.push({ method: 'insertSessionBefore', args: [workspaceId, sessionId, beforeSessionId] })
     const stub = this.stubs.get('insertSessionBefore')
     if (stub !== undefined) return await (stub(workspaceId, sessionId, beforeSessionId) as Promise<WorkspaceView>)
-    return { workspaceId, title: '', path: '', sessionIds: [sessionId] } as unknown as WorkspaceView
+    return echoView(workspaceId, { title: '', path: null, roots: [], sessionIds: [sessionId] })
   }
 
   /**

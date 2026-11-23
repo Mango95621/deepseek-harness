@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Portão de estágios YXSpec",
+    "description": "Converte os portões de etapa ASPICE de texto em interceptação no nível do host antes de a ferramenta executar."
+  }
+}

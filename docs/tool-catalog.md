@@ -1901,7 +1901,7 @@ Source: [`packages/session-query/tool-session-list/src/index.ts`](../packages/se
 
 ### `list_workspace`
 
-List workspaces in registry order, including empty workspaces. Returns IDs, titles, paths, and creation and update times.
+List workspaces in registry order, including empty workspaces. Returns IDs, titles, paths, and creation and update times. A workspace with no repository root yet reports a null path.
 
 ```json
 {

@@ -1,0 +1,49 @@
+{
+  "name": "@deepseek-ai/dsh-yxspec-gate",
+  "description": "YXSpec stage gate: turns the ASPICE step gates from prose into host-level interception on tools/pre-execute",
+  "version": "0.2.2-rc.4",
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/deepseek-ai/deepseek-harness.git",
+    "directory": "packages/yxspec/yxspec-gate"
+  },
+  "type": "module",
+  "main": "lib/index.js",
+  "types": "lib/types/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./lib/types/index.d.ts",
+      "default": "./lib/index.js"
+    },
+    "./src/*": "./src/*",
+    "./locale/*.json": "./locale/*.json",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "locale/*.json",
+    "lib/index.js",
+    "lib/types/**/*.d.ts",
+    "lib/types/**/*.d.ts.map",
+    "lib/**/*.js.map",
+    "src"
+  ],
+  "license": "MIT",
+  "dependencies": {
+    "@deepseek-ai/schemastery": "workspace:~"
+  },
+  "peerDependencies": {
+    "@deepseek-ai/cordis": "workspace:~",
+    "@deepseek-ai/dsh-tools": "workspace:*",
+    "@deepseek-ai/dsh-yxspec": "workspace:*",
+    "@deepseek-ai/dsh-yxspec-artifact": "workspace:*"
+  },
+  "devDependencies": {
+    "@deepseek-ai/cordis": "workspace:~",
+    "@deepseek-ai/dsh-tools": "workspace:*",
+    "@deepseek-ai/dsh-yxspec": "workspace:*",
+    "@deepseek-ai/dsh-yxspec-artifact": "workspace:*"
+  }
+}

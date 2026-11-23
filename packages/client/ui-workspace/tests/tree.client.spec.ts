@@ -84,7 +84,7 @@ const branchedList = (
   }
 }
 const workspace = (id: string, sessionIds: string[], title = id): WorkspaceView => ({
-  workspaceId: wid(id), path: `/projects/${id}`, title,
+  workspaceId: wid(id), roots: [`/projects/${id}`], path: `/projects/${id}`, title,
   sessionIds: sessionIds.map(sid), createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:00:00.000Z',
 })
 const view = (expandedGroups: readonly string[] = [], ungroupedOrder?: readonly string[]) => ({
@@ -267,6 +267,20 @@ describe('deriveGroups', () => {
     const groups = deriveGroups(sessions, workspaces, noRows, noAttention, view(['first']))
     expect(groups.map(group => group.key)).toEqual(['first', 'empty'])
     expect(groups[0]!.sessions.map(session => session.id)).toEqual([sid('older'), sid('newer')])
+  })
+
+  it('groups a project with no repository root yet, which has no path to name', () => {
+    // The wizard's step 1 creates a project over no directory; step 2 attaches its first root.
+    // Between the two the row is real and its path is null, so the group has to build from the
+    // id alone rather than the path — a Host listing such a project is the ordinary state, not
+    // an error case.
+    const rootless = { ...workspace('pending', []), roots: [], path: null }
+    const groups = deriveGroups(list(), [rootless], noRows, noAttention, view(['pending']))
+    expect(groups.map(group => group.key)).toEqual(['pending'])
+    expect(groups[0]!.label).toBe('pending')
+    // `undefined`, not `null`: the group's `cwd` is what the row offers as the project's
+    // directory, and a null here would read as a directory that is the string "null".
+    expect(groups[0]!.cwd).toBeUndefined()
   })
 
   it('projects pending-interaction state into grouped and flat rows', () => {
@@ -1007,9 +1021,9 @@ describe('parent folder membership', () => {
 })
 
 it('leaves unnamed history titles empty for locale-owned row labels', () => {
-  const item = summary('unnamed', 1, '/work/Default workspace')
+  const item = summary('unnamed', 1, '/work/Default project')
   delete item.title
-  item.displayTitle = 'Default workspace'
+  item.displayTitle = 'Default project'
   const sessions = list(item)
   expect(deriveFlat(sessions, [item.id], noRows, noAttention)[0]?.title).toBe('')
 })

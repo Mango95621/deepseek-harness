@@ -5,10 +5,14 @@ import type { Locator } from 'playwright'
 import { chromium } from 'playwright'
 import { expect, it } from 'vitest'
 import { compareOrRefreshGolden, launchWebScaffold, seedSession, watchConsole, webSnapshotMode } from './scaffold.ts'
+import { startSessionIn } from './support.ts'
 
 /** A returning rail uses its compact layout without wide-content or icon-entry animations. */
 async function assertCompactRail(sidebar: Locator): Promise<void> {
-  expect(await sidebar.getByRole('button', { name: 'New session', exact: true }).count()).toBe(1)
+  // The rail's own controls are the shell's: the collapse toggle labels itself
+  // "Open sidebar" once collapsed, and the region below contributes the search
+  // control. Nothing here is a New Session affordance — the shell has none.
+  expect(await sidebar.getByRole('button', { name: 'Open sidebar', exact: true }).count()).toBe(1)
   expect(await sidebar.evaluate((el) => {
     const root = el.firstElementChild!
     return {
@@ -43,17 +47,9 @@ it.each(['light', 'dark'] as const)('keeps the macOS drawer opaque and excludes 
       })
       expect(background.image).toBe('none')
       expect(background.color).toMatch(/^rgb\(/)
-      expect(await drawer.getByRole('button', { name: 'New session', exact: true }).last().evaluate((el) => {
-        const actual = getComputedStyle(el).backgroundColor
-        const root = document.documentElement
-        const platform = root.dataset.platform
-        delete root.dataset.platform
-        try {
-          return actual === getComputedStyle(el).backgroundColor
-        } finally {
-          root.dataset.platform = platform
-        }
-      })).toBe(true)
+      // The drawer holds no shell control with a platform-conditional fill any
+      // more: the New Session bar that carried the macOS glass wash is gone,
+      // and starting a Session is the workspace row's own action.
       const inactiveContent = page.locator('[inert], [inert] *')
       expect(await inactiveContent.count()).toBeGreaterThan(0)
       expect(await inactiveContent.evaluateAll(elements => elements
@@ -412,7 +408,8 @@ it('overlays the conversation and closes after navigation without losing its sid
       await page.setViewportSize({ width: 390, height: 844 })
       await drawer.waitFor({ state: 'hidden' })
       await opener.tap()
-      await drawer.getByRole('button', { name: 'New session', exact: true }).last().tap()
+      // The project row's own action starts the Session the drawer then closes on.
+      await startSessionIn(page)
       await drawer.waitFor({ state: 'hidden' })
       const home = page.locator('[data-phase="hero"]')
       await home.waitFor()
@@ -585,7 +582,7 @@ it('overlays the conversation and closes after navigation without losing its sid
         await pointerPage.setViewportSize({ width: 768, height: 844 })
         await pointerPage.locator('[data-sidebar-drawer]').waitFor({ state: 'detached' })
         const pointerSidebar = pointerPage.locator('[data-slot="sidebar"]')
-        await expect.poll(() => pointerSidebar.getByRole('button', { name: 'New session', exact: true }).count()).toBe(1)
+        await expect.poll(() => pointerSidebar.getByRole('button', { name: 'Open sidebar', exact: true }).count()).toBe(1)
         const railToggle = pointerSidebar.getByRole('button', { name: 'Open sidebar', exact: true })
         expect(await railToggle.evaluate(el => el === document.activeElement)).toBe(true)
       } finally {

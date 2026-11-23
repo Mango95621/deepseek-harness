@@ -27,16 +27,26 @@ interface WorkspaceShortcutControls {
 
 /**
  * Create the private browser request source shared by commands and controls.
+ * @param claimAdd - optional claim on the add-project gesture, consulted before the menu
+ *   request is raised and answering whether a guided creation took it.
  * @returns observable state and its complete mutation callbacks.
  */
-export function createWorkspaceShortcutControls(): WorkspaceShortcutControls {
+export function createWorkspaceShortcutControls(
+  claimAdd?: () => boolean,
+): WorkspaceShortcutControls {
   const state = createSnapshotStore<WorkspaceShortcutState>({
     searchRequest: 0, addRequested: false, directoryBusy: false, renameTarget: null,
   })
   return {
     state,
     search: () => { state.set({ ...state.getSnapshot(), searchRequest: state.getSnapshot().searchRequest + 1 }) },
-    add: () => { state.set(state.getSnapshot().directoryBusy ? state.getSnapshot() : { ...state.getSnapshot(), addRequested: true }) },
+    add: () => {
+      // The one funnel every add affordance reaches (the header button, the shortcut, the
+      // empty-state entry), so the claim sits here rather than at each of them: a guided
+      // creation replaces the *gesture*, not one of the three controls that raise it.
+      if (claimAdd?.() === true) return
+      state.set(state.getSnapshot().directoryBusy ? state.getSnapshot() : { ...state.getSnapshot(), addRequested: true })
+    },
     closeAdd: () => { state.set({ ...state.getSnapshot(), addRequested: false }) },
     directoryBusy: (busy: boolean) => { state.set({ ...state.getSnapshot(), directoryBusy: busy }) },
     rename: (sessionId: SessionId, currentTitle: string) => {
@@ -67,7 +77,12 @@ export function installWorkspaceShortcuts(
   const t = ctx.locale.bind('workspace')
   const current = () => Object.values(ctx.sessions.list.getSnapshot().byId)
     .find(row => (row.retainedBy.mainView ?? 0) > 0)
-  const addReason = () => ctx.slots.entries('sidebar.workspaces.directoryFlow').length === 0
+  // A guided creation *replaces* the directory picker as the add route, so the command's own
+  // precondition changes with it: the picker's absence is a hard block only while nothing else
+  // can serve the gesture. Reading the guide here (rather than assuming the caller wired one)
+  // keeps the command's answer about what is actually installed.
+  const addReason = () => ctx.get('projectOnboarding') === undefined
+    && ctx.slots.entries('sidebar.workspaces.directoryFlow').length === 0
     ? t('shortcut.noPicker')
     : controls.state.getSnapshot().directoryBusy ? t('shortcut.directoryBusy') : null
   const register = (id: string, label: () => string, aliases: string[], code: string,

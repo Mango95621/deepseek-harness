@@ -3,6 +3,7 @@ import {
   ClientWorkspaceModel, type WorkspaceRemote,
 } from '../src/client/index.ts'
 import type {
+  WorkspaceAddRootRequest,
   WorkspaceArchiveSessionRequest,
   WorkspaceArchiveValue,
   WorkspaceCreateRequest,
@@ -15,6 +16,7 @@ import type {
   WorkspaceOrderValue,
   WorkspacePinSessionRequest,
   WorkspacePinValue,
+  WorkspaceRemoveRootRequest,
   WorkspaceRenameRequest,
   WorkspaceUnarchiveSessionRequest,
   WorkspaceUnpinSessionRequest,
@@ -36,6 +38,7 @@ function workspace(
 ): WorkspaceView {
   return {
     workspaceId: wid(id),
+    roots: [`/w/${id}`],
     path: `/w/${id}`,
     title: id,
     sessionIds,
@@ -72,11 +75,20 @@ class FakeWorkspaceRemote implements WorkspaceRemote {
   readonly initializeDefault = vi.fn<WorkspaceRemote['initializeDefault']>(async () => remoteOk({ workspace: workspace('default') }))
   readonly calls: Array<{ readonly method: string; readonly request: unknown }> = []
   onCreate: (request: WorkspaceCreateRequest) => Promise<RemoteResult<WorkspaceCreateValue>> = request =>
-    Promise.resolve(remoteOk({ workspace: workspace(request.path.split('/').pop() ?? 'workspace'), created: true }))
+    Promise.resolve(remoteOk({ workspace: workspace(request.path!.split('/').pop() ?? 'workspace'), created: true }))
   onRename: (request: WorkspaceRenameRequest) => Promise<RemoteResult<WorkspaceValue>> = request =>
     Promise.resolve(remoteOk({ workspace: { ...workspace(String(request.workspaceId)), title: request.title } }))
   onDelete: (_request: WorkspaceDeleteRequest) => Promise<RemoteResult<WorkspaceDeleteValue>> = () =>
     Promise.resolve(remoteOk({ deleted: true }))
+  onAddRoot: (request: WorkspaceAddRootRequest) => Promise<RemoteResult<WorkspaceValue>> = request =>
+    Promise.resolve(remoteOk({
+      workspace: {
+        ...workspace(String(request.workspaceId)),
+        roots: [...workspace(String(request.workspaceId)).roots, request.path],
+      },
+    }))
+  onRemoveRoot: (request: WorkspaceRemoveRootRequest) => Promise<RemoteResult<WorkspaceValue>> = request =>
+    Promise.resolve(remoteOk({ workspace: workspace(String(request.workspaceId)) }))
   onInsertBefore: (
     request: WorkspaceInsertBeforeRequest,
   ) => Promise<RemoteResult<WorkspaceOrderValue>> = request =>
@@ -116,6 +128,16 @@ class FakeWorkspaceRemote implements WorkspaceRemote {
   delete(request: WorkspaceDeleteRequest): Promise<RemoteResult<WorkspaceDeleteValue>> {
     this.record('delete', request)
     return this.onDelete(request)
+  }
+
+  addRoot(request: WorkspaceAddRootRequest): Promise<RemoteResult<WorkspaceValue>> {
+    this.record('addRoot', request)
+    return this.onAddRoot(request)
+  }
+
+  removeRoot(request: WorkspaceRemoveRootRequest): Promise<RemoteResult<WorkspaceValue>> {
+    this.record('removeRoot', request)
+    return this.onRemoveRoot(request)
   }
 
   insertBefore(request: WorkspaceInsertBeforeRequest): Promise<RemoteResult<WorkspaceOrderValue>> {
@@ -233,6 +255,75 @@ describe('ClientWorkspaceModel', () => {
     await expect(model.create({ path: '/w/created' })).resolves.toMatchObject({ ok: true })
     expect(remote.calls).toContainEqual({ method: 'create', request: { path: '/w/created' } })
     expect(model.getSnapshot().items[0]?.workspaceId).toBe('created')
+  })
+
+  it('creates a multi-root project from one roots list', async () => {
+    const remote = new FakeWorkspaceRemote()
+    const model = modelFor(remote)
+    remote.onCreate = request => Promise.resolve(remoteOk({
+      workspace: { ...workspace('multi'), roots: [...request.roots ?? []] },
+      created: true,
+    }))
+    await expect(model.create({ roots: ['/w/ivi', '/w/mcu'] })).resolves.toMatchObject({ ok: true })
+    expect(remote.calls).toContainEqual({
+      method: 'create',
+      request: { roots: ['/w/ivi', '/w/mcu'] },
+    })
+    expect(model.getSnapshot().items[0]?.roots).toEqual(['/w/ivi', '/w/mcu'])
+  })
+
+  it('appends a repository root without moving the primary', async () => {
+    const remote = new FakeWorkspaceRemote()
+    const model = modelFor(remote)
+    baseline(model, [workspace('p')])
+    await expect(model.addRoot({ workspaceId: wid('p'), path: '/w/extra' }))
+      .resolves.toMatchObject({ ok: true })
+    expect(remote.calls).toContainEqual({
+      method: 'addRoot',
+      request: { workspaceId: 'p', path: '/w/extra' },
+    })
+    expect(model.getSnapshot().items[0]?.roots).toEqual(['/w/p', '/w/extra'])
+  })
+
+  it('leaves the projection unchanged when a root addition is refused', async () => {
+    const remote = new FakeWorkspaceRemote()
+    const model = modelFor(remote)
+    baseline(model, [workspace('p')])
+    remote.onAddRoot = () => Promise.resolve(workspaceError({
+      code: 'workspace/root-invalid',
+      message: 'path is not a directory',
+    } as RemoteFailure))
+    await expect(model.addRoot({ workspaceId: wid('p'), path: '/w/file.txt' })).resolves.toMatchObject({ ok: false })
+    expect(model.getSnapshot().items[0]?.roots).toEqual(['/w/p'])
+  })
+
+  it('merges the row an accepted root removal returns', async () => {
+    const remote = new FakeWorkspaceRemote()
+    const model = modelFor(remote)
+    baseline(model, [{ ...workspace('p'), roots: ['/w/p', '/w/extra'] }])
+    // Removing the last root returns a row whose path is null, which the model
+    // has to store verbatim rather than treat as a missing value.
+    remote.onRemoveRoot = () => Promise.resolve(remoteOk({
+      workspace: { ...workspace('p'), roots: [], path: null },
+    }))
+    await expect(model.removeRoot({ workspaceId: wid('p'), path: '/w/p' })).resolves.toMatchObject({ ok: true })
+    expect(remote.calls).toContainEqual({
+      method: 'removeRoot',
+      request: { workspaceId: 'p', path: '/w/p' },
+    })
+    expect(model.getSnapshot().items[0]).toMatchObject({ roots: [], path: null })
+  })
+
+  it('leaves the projection unchanged when a root removal is refused', async () => {
+    const remote = new FakeWorkspaceRemote()
+    const model = modelFor(remote)
+    baseline(model, [{ ...workspace('p'), roots: ['/w/p', '/w/extra'] }])
+    remote.onRemoveRoot = () => Promise.resolve(workspaceError({
+      code: 'workspace/invalid-path',
+      message: 'the last root cannot be removed',
+    } as RemoteFailure))
+    await expect(model.removeRoot({ workspaceId: wid('p'), path: '/w/p' })).resolves.toMatchObject({ ok: false })
+    expect(model.getSnapshot().items[0]?.roots).toEqual(['/w/p', '/w/extra'])
   })
 
   it('lets newer stream order outrank unary echoes and rolls failures back', async () => {

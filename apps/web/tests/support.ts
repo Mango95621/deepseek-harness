@@ -340,7 +340,7 @@ export async function revealNavigationDrawer(page: Page, locale: 'en' | 'zh' | '
 export async function connectFreshWorkspace(page: Page, root: string, name = 'workspace'): Promise<void> {
   mkdirSync(join(root, name), { recursive: true })
   await revealNavigationDrawer(page, 'en')
-  await page.getByRole('button', { name: 'Add workspace', exact: true }).click()
+  await page.getByRole('button', { name: 'Add project', exact: true }).click()
   const dialog = page.getByRole('dialog', { name: 'Select Workspace Directory' })
   await dialog.waitFor({ timeout: 10_000 })
   await dialog.getByRole('button', { name: 'Edit path' }).click()
@@ -367,8 +367,8 @@ export async function connectFreshWorkspace(page: Page, root: string, name = 'wo
 export async function connectFreshWorkspaceZh(page: Page, root: string, name = 'workspace', modelAvailable = true): Promise<void> {
   mkdirSync(join(root, name), { recursive: true })
   await revealNavigationDrawer(page, 'zh')
-  await page.getByRole('button', { name: '添加工作区', exact: true }).click()
-  const dialog = page.getByRole('dialog', { name: '选择工作区目录' })
+  await page.getByRole('button', { name: '添加项目', exact: true }).click()
+  const dialog = page.getByRole('dialog', { name: '选择项目目录' })
   await dialog.waitFor({ timeout: 10_000 })
   await dialog.getByRole('button', { name: '编辑路径' }).click()
   const pathInput = dialog.getByRole('textbox', { name: '编辑路径' })
@@ -378,6 +378,41 @@ export async function connectFreshWorkspaceZh(page: Page, root: string, name = '
   const editable = modelAvailable ? '[contenteditable="true"]' : ''
   await page.locator(`[data-composer-input]${editable}[data-placeholder="描述你想要构建的内容, / 调用指令, @ 文件或对话"]`)
     .waitFor({ timeout: 15_000 })
+}
+
+/**
+ * Start a fresh Session from the workspace browser's own per-project control.
+ *
+ * The sidebar shell owns no New Session control: starting one names the project
+ * it belongs to, and the browser's row action is where that choice lives (a
+ * shell-wide button would have to guess). A scenario that needs a new blank
+ * therefore names its project and drives that row's action.
+ * @param page - the page under test.
+ * @param workspaceTitle - visible title of the project whose row action starts the
+ *   Session; omit to use the first project row (a scaffold-derived title is not knowable
+ *   to the caller).
+ * @param locale - the UI language the row action announces itself in.
+ */
+export async function startSessionIn(page: Page, workspaceTitle?: string, locale: 'en' | 'zh' = 'en'): Promise<void> {
+  const rows = page.locator('[data-row-key^="workspace:"]')
+  const row = (workspaceTitle === undefined ? rows : rows.filter({ hasText: workspaceTitle })).first()
+  await row.waitFor({ timeout: 15_000 })
+  // The action names its own project, so matching its verb inside the row is
+  // what keeps this helper independent of the title the caller passed.
+  const action = row.getByRole('button', { name: locale === 'zh' ? /^在“.*”中新建会话$/u : /^New session in /u })
+  // Hover-revealed controls appear for pointer devices; a touch composition
+  // shows the row actions outright. The same query the rows' CSS uses picks
+  // both the reveal and the gesture.
+  const touch = await page.evaluate(() => window.matchMedia('(hover: none)').matches)
+  if (!touch) {
+    await expect.poll(async () => {
+      await row.hover()
+      return await action.isVisible()
+    }, { timeout: 10_000 }).toBe(true)
+  }
+  await action.waitFor({ state: 'visible', timeout: 10_000 })
+  if (touch) await action.tap()
+  else await action.click()
 }
 
 /**

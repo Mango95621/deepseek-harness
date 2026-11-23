@@ -42,11 +42,11 @@ export interface WorkspaceEntityHost {
   /**
    * Validate an already-accounted session, preserving ownership when its fully
    * qualified cwd cannot resolve because a path component is missing.
-   * @param id - Session already present in this workspace's candidate account.
-   * @param path - Workspace's stored canonical directory.
+   * @param id - Session already present in this project's candidate account.
+   * @param roots - Project's stored canonical roots.
    * @returns whether the candidate remains a member.
    */
-  candidateMatches(id: SessionId, path: string): boolean
+  candidateMatches(id: SessionId, roots: readonly string[]): boolean
 
   /**
    * Read one stored session header for attach validation.
@@ -91,8 +91,12 @@ export class WorkspaceEntity implements Workspace {
     this.record = record
   }
 
-  get path(): string {
-    return this.record.path
+  get roots(): readonly string[] {
+    return this.record.roots
+  }
+
+  get path(): string | undefined {
+    return this.record.roots[0]
   }
 
   get title(): string {
@@ -108,7 +112,7 @@ export class WorkspaceEntity implements Workspace {
   }
 
   get sessionIds(): readonly SessionId[] {
-    return this.record.sessionIds.filter(id => this.host.candidateMatches(id, this.record.path))
+    return this.record.sessionIds.filter(id => this.host.candidateMatches(id, this.record.roots))
   }
 
   /** Reads the registry's startup and attach-time header index without persistence I/O. */
@@ -120,16 +124,33 @@ export class WorkspaceEntity implements Workspace {
     await this.mutate(record => ({ ...record, title }))
   }
 
+  /**
+   * Replace the declared repository roots. The caller (the registry) has
+   * already canonicalized and de-duplicated the list. Sessions whose cwd no
+   * longer falls in any root are pruned by the same `mutate` pass that writes
+   * the change.
+   *
+   * The list may be empty: a project named before its repositories are
+   * declared carries no roots, and dropping the last root is how a project
+   * returns to that state. Removal is otherwise the registry's rule to make —
+   * this method writes what it is given.
+   * @param roots - Canonical roots, primary first.
+   * @returns resolution after durability.
+   */
+  async setRoots(roots: readonly string[]): Promise<void> {
+    await this.mutate(record => ({ ...record, roots: [...roots] }))
+  }
+
   async attachSession(sessionId: SessionId): Promise<void> {
     // Validation is skipped when the settled snapshot already accounts the
     // id: the cwd fact was checked when it first attached and both inputs
-    // (stored header cwd, workspace path) are immutable. Membership itself is
+    // (stored header cwd, workspace roots) are immutable. Membership itself is
     // decided on the write chain inside `mutate`, never on this snapshot.
     if (!this.record.sessionIds.includes(sessionId)) {
       const header = await this.host.readSessionHeader(sessionId)
       if (header.cwd === undefined) {
         throw new Error(
-          `cannot attach session '${sessionId}' to workspace '${this.record.path}': `
+          `cannot attach session '${sessionId}' to project '${this.record.title}': `
           + 'its stored header carries no cwd to validate against',
         )
       }
@@ -138,21 +159,35 @@ export class WorkspaceEntity implements Workspace {
         cwd = await realpathNormalize(header.cwd)
       } catch (error) {
         throw new Error(
-          `cannot attach session '${sessionId}' to workspace '${this.record.path}': `
+          `cannot attach session '${sessionId}' to project '${this.record.title}': `
           + `its cwd '${header.cwd}' does not resolve, so it cannot be validated`,
           { cause: error },
         )
       }
       if (!(await stat(cwd)).isDirectory()) {
         throw new Error(
-          `cannot attach session '${sessionId}' to workspace '${this.record.path}': `
+          `cannot attach session '${sessionId}' to project '${this.record.title}': `
           + `its cwd '${header.cwd}' is not a directory`,
         )
       }
-      if (cwd !== this.record.path) {
+      // A session belongs to this project when it works in any declared root,
+      // not only the primary one: the agent routinely starts a session in the
+      // MCU firmware root of a project whose primary root is the IVI app.
+      //
+      // A project with no roots yet accepts no session: there is no directory
+      // its cwd could be validated against, so any cwd would be admitted on
+      // trust. The refusal names the real remedy — declare a repository first —
+      // rather than admitting a session the project cannot account for.
+      if (this.record.roots.length === 0) {
         throw new Error(
-          `cannot attach session '${sessionId}' to workspace '${this.record.path}': `
-          + `its cwd resolves to '${cwd}'`,
+          `cannot attach session '${sessionId}' to project '${this.record.title}': `
+          + 'the project declares no repository root yet, so no cwd can be validated against it',
+        )
+      }
+      if (!this.record.roots.includes(cwd)) {
+        throw new Error(
+          `cannot attach session '${sessionId}' to project '${this.record.title}': `
+          + `its cwd resolves to '${cwd}', which is none of ${this.record.roots.length} declared root(s)`,
         )
       }
       this.host.rememberSessionPath(sessionId, cwd)
@@ -166,12 +201,12 @@ export class WorkspaceEntity implements Workspace {
     await this.mutate((record) => {
       if (!record.sessionIds.includes(sessionId)) {
         throw new WorkspaceMoveInvalidError(
-          `cannot move session '${sessionId}' in workspace '${record.path}': the session is not accounted`,
+          `cannot move session '${sessionId}' in project '${record.title}': the session is not accounted`,
         )
       }
       if (beforeSessionId !== undefined && !record.sessionIds.includes(beforeSessionId)) {
         throw new WorkspaceMoveInvalidError(
-          `cannot move session '${sessionId}' before '${beforeSessionId}' in workspace '${record.path}': `
+          `cannot move session '${sessionId}' before '${beforeSessionId}' in project '${record.title}': `
           + 'the anchor session is not accounted',
         )
       }
@@ -192,13 +227,16 @@ export class WorkspaceEntity implements Workspace {
   }
 
   async status(): Promise<'ok' | 'missing-dir'> {
-    try {
-      return (await stat(this.record.path)).isDirectory() ? 'ok' : 'missing-dir'
-    } catch {
-      // Any stat failure (ENOENT, dangling parent, permission loss) means the
-      // directory is not usable right now; the record itself never mutates.
-      return 'missing-dir'
+    for (const root of this.record.roots) {
+      try {
+        if (!(await stat(root)).isDirectory()) return 'missing-dir'
+      } catch {
+        // Any stat failure (ENOENT, dangling parent, permission loss) means the
+        // directory is not usable right now; the record itself never mutates.
+        return 'missing-dir'
+      }
     }
+    return 'ok'
   }
 
   /**
@@ -219,7 +257,7 @@ export class WorkspaceEntity implements Workspace {
       next = await this.host.table().update(this.id, (current) => {
         const changed = fn(current)
         const sessionIds = changed.sessionIds.filter(
-          id => this.host.candidateMatches(id, changed.path),
+          id => this.host.candidateMatches(id, changed.roots),
         )
         if (changed === current && sessionIds.length === current.sessionIds.length) {
           throw unchangedSentinel

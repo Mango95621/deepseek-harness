@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Painel de processo YXSpec",
+    "description": "Exibe o modelo de estágios ASPICE e o estado de chegada dos artefatos de cada estágio a partir do namespace remoto yxspec."
+  }
+}

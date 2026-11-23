@@ -40,18 +40,13 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
 /** Dictionary namespace owned by this plugin. */
 const NS = 'sidebar'
 
-interface WorkspaceNavigation {
-  startSession(workspaceId?: Parameters<SidebarRootInjected['startSession']>[0]): void
-}
-
 /** Services required by the sidebar plugin. */
-export const inject = ['slots', 'layout', 'uiWorkspace', 'locale', 'shortcuts']
+export const inject = ['slots', 'layout', 'locale', 'shortcuts']
 
 /** Registers the sidebar shell and its service callbacks.
  * @param ctx - Client root context.
  */
 export function apply(ctx: ClientContext): void {
-  const workspaceNavigation = ctx.get('uiWorkspace') as unknown as WorkspaceNavigation
   ctx.effect(() => ctx.locale.register(NS, { zh, en, ja, es, fr, de, ru, pt }), 'ui-sidebar: dictionaries')
   const panels = createSnapshotStore<readonly SidebarPanelMetadata[]>([])
   const syncPanels = (): void => {
@@ -74,16 +69,19 @@ export function apply(ctx: ClientContext): void {
     getSnapshot: () => ctx.slots.entriesOfSlot('sidebar.panellist.actions').length > 0,
     subscribe: (listener: () => void) => ctx.slots.subscribe('sidebar.panellist.actions', listener),
   }
+  const sessionActions = {
+    getSnapshot: () => ctx.slots.entriesOfSlot('sidebar.session.action').length > 0,
+    subscribe: (listener: () => void) => ctx.slots.subscribe('sidebar.session.action', listener),
+  }
 
   const injectProps = (): SidebarRootInjected => ({
-    // The shell's New Session button rides the Workspace UI's shared action
-    // (current Session Workspace, then recent Workspace).
-    startSession: (workspaceId) => { workspaceNavigation.startSession(workspaceId) },
     toggleSidebar: () => { ctx.layout.toggleSidebar() },
     selectPanel: (id) => { ctx.layout.selectPanel(id) },
     setPinned: panelPins.setPinned,
     trackEntryClick: (attributes) => { ctx.get('productAnalytics')?.track('sidebar_menu_click', attributes) },
-    hooks: { panels, shortcuts: ctx.shortcuts.catalog, entryPins: panelPins.unpinned, entryActions },
+    hooks: {
+      panels, shortcuts: ctx.shortcuts.catalog, entryPins: panelPins.unpinned, entryActions, sessionActions,
+    },
   })
   ctx.slots.inject('sidebar', function* () {
     yield ctx.slots.registerFactory({

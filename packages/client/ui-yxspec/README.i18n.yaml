@@ -1,0 +1,49 @@
+# Bilingual-pair consistency record for README.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write packages/client/ui-yxspec/README.md
+/:
+  en: b950339fc0eb1afe
+  zh: c3b39e675b8d0480
+/deepseek-ai-dsh-client-ui-yxspec:
+  en: b539f89fd512a9e8
+  zh: e63c2656a0b31bd9
+/deepseek-ai-dsh-client-ui-yxspec/summary:
+  en: 60b6001317eecf8a
+  zh: 59f6fb7c69aacae0
+/deepseek-ai-dsh-client-ui-yxspec/table-of-contents:
+  en: d152484eb41ac6b4
+  zh: 09388d293f9be9cb
+/deepseek-ai-dsh-client-ui-yxspec/use-this-package:
+  en: d52d0279ef610184
+  zh: 37015e9b51718fee
+/deepseek-ai-dsh-client-ui-yxspec/use-this-package/when-to-choose-it:
+  en: 342a6bb520a4a0cc
+  zh: 2df221bc90ef843b
+/deepseek-ai-dsh-client-ui-yxspec/use-this-package/minimal-configuration:
+  en: 86ed2b8b2c881bfd
+  zh: 24e006be0313fff6
+/deepseek-ai-dsh-client-ui-yxspec/use-this-package/the-five-onboarding-prerequisites:
+  en: 359c46082c6d8bac
+  zh: 2e7e6f685b89a36a
+/deepseek-ai-dsh-client-ui-yxspec/understand-the-implementation:
+  en: 5125092d28888a8a
+  zh: cd3450a72b63acc8
+/deepseek-ai-dsh-client-ui-yxspec/understand-the-implementation/source-map:
+  en: 70b49a623a975bfc
+  zh: cbfb89e0eb18cdfd
+/deepseek-ai-dsh-client-ui-yxspec/further-exploration:
+  en: 747b8af84343281c
+  zh: f41999f4702ce339
+/deepseek-ai-dsh-client-ui-yxspec/model-experience:
+  en: 055579302150864b
+  zh: d1dfda173f705af6
+/deepseek-ai-dsh-client-ui-yxspec/model-experience/kv-cache-effect:
+  en: e7ba08477bf22c4e
+  zh: f365439c69beb722
+/deepseek-ai-dsh-client-ui-yxspec/known-limitations-and-deferred-work:
+  en: debc8aa931f97096
+  zh: 5a2864b610767d78
+/deepseek-ai-dsh-client-ui-yxspec/known-limitations-and-deferred-work/dev-note:
+  en: e67f633dc6fe7773
+  zh: 3bb0c20c93f16f98

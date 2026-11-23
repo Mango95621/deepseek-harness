@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "YXSpec-Frierpunkte",
+    "description": "Leitet die ASPICE-Freigabeschritte durch die Host-Genehmigung, damit ein unbeaufsichtigter Ablauf fail-closed endet."
+  }
+}

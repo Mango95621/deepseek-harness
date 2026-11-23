@@ -2,5 +2,5 @@
   - heading "欢迎使用 DeepSeek Harness" [level=1]:
     - text: 欢迎使用
     - emphasis: DeepSeek Harness
-  - paragraph: DeepSeek Harness 会以本地文件夹作为工作区，通过调用各种工具，读写本机文件，完成搜索整理资料、制作文档表格、编写代码、排查问题等各种任务。
+  - paragraph: DeepSeek Harness 会以本地文件夹作为项目，通过调用各种工具，读写本机文件，完成搜索整理资料、制作文档表格、编写代码、排查问题等各种任务。
   - button "开始设置"

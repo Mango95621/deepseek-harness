@@ -119,6 +119,8 @@ export function WorkspacePickFlow({
       title: workspaceDisplayTitle(workspace.title, defaultWorkspaceName),
       path: workspace.path,
     }))
+    // Same-titled projects are told apart by path; one without a root yet has
+    // none to offer, so it stands on its title alone.
     const suffixes = distinguishingPathSuffixes(rows)
     return rows.map(row => ({ ...row, suffix: suffixes.get(row.id) }))
   }, [pinAdd, workspaces, defaultWorkspaceName])
@@ -127,7 +129,7 @@ export function WorkspacePickFlow({
       id,
       // The title gives way first, so the suffix that tells the rows apart
       // stays visible; the native tooltip carries the full path.
-      label: suffix === undefined
+      label: suffix === undefined || path === null
         ? title
         : (
           <span className={css.disambiguated} title={path}>

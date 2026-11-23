@@ -19,8 +19,8 @@
         - button "修改搜索会话快捷键"
         - text: 搜索会话 ⌥ ⌘ K
       - listitem:
-        - button "修改添加工作区快捷键"
-        - text: 添加工作区 ⌥ ⌘ O
+        - button "修改添加项目快捷键"
+        - text: 添加项目 ⌥ ⌘ O
       - listitem:
         - button "修改重命名会话快捷键"
         - text: 重命名会话 ⌥ ⌘ G
@@ -37,8 +37,8 @@
         - button "修改展开／收起右侧栏快捷键"
         - text: 展开／收起右侧栏 ⇧ ⌘ B
       - listitem:
-        - button "修改工作区文件快捷键"
-        - text: 工作区文件 ⌥ ⌘ P
+        - button "修改项目文件快捷键"
+        - text: 项目文件 ⌥ ⌘ P
       - listitem:
         - button "修改新建终端快捷键"
         - text: "新建终端 ⌃ `"

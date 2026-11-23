@@ -356,7 +356,11 @@ describe('dsh web keyless CLI smoke', () => {
         }
       })
       await page.goto(readyUrl)
-      await page.getByRole('button', { name: 'New session', exact: true }).first().waitFor({ timeout: 30_000 })
+      // The mounted shell proves the app is usable. The sidebar toggle is the
+      // shell's own control and independent of whether a project exists; the
+      // New Session control this lane used to wait on is gone (starting a
+      // Session is the workspace browser's per-project row action).
+      await page.getByRole('button', { name: 'Collapse sidebar', exact: true }).waitFor({ timeout: 30_000 })
       const batchPaths = [...new Set(pluginScripts)].sort()
       // The bootstrap phase is the modules package alone; the application phase
       // spans two combos because its map-form URL is over the 3 KiB combo limit

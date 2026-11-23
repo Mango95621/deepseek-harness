@@ -3,17 +3,17 @@
 # After editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write docs/subsystems/workspace.md
 /workspaces:
-  en: 70865308120d0b14
-  zh: fe5d7406141657e1
+  en: 22eb738eed154955
+  zh: ec5c6b716d526f38
 /workspaces/identity:
-  en: d61a7e78bbc1fb56
-  zh: 8397869f70cd5b28
+  en: d909e3d1e1e703cf
+  zh: 10683c3d3227aa09
 /workspaces/the-workspace-entity:
-  en: ce5b65fb4d0b0c7b
-  zh: aa332a17810d583a
+  en: 1bb577c9089fbf4a
+  zh: 9284cca1a78d871a
 /workspaces/the-registry-ctx-workspaceregistry:
-  en: 73b54ccf836b7f46
-  zh: 7ee93ba8bb0a616a
+  en: d2cac138dcf26670
+  zh: 38f1f8f91c352691
 /workspaces/default-workspace-initialization:
   en: c4307480e504ba81
   zh: dc8a98e1b447b900

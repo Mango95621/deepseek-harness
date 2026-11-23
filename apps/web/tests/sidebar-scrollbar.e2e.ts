@@ -347,7 +347,10 @@ function nestedScrollGeometry(page: Page) {
       listRange: list.scrollHeight - list.clientHeight,
       headerTop: edge('[data-sidebar-workspace-header]').top,
       navBottom: edge('[class*="panelList"]').bottom,
-      buttonTop: edge('button[class*="newSession"]').top,
+      // The shell's own fixed control above both scrollers: the sidebar toggle
+      // in the brand row. (The New Session bar this used to measure is gone —
+      // starting a Session is the workspace row's own action.)
+      buttonTop: edge('button[data-sidebar-toggle]').top,
       footerTop: edge('[class*="footArea"]').top,
     }
   })

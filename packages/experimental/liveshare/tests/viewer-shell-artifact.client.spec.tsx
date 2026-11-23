@@ -93,7 +93,8 @@ describe('Assembled liveshare viewer page', () => {
     const menus = inputFixture.context().get('contextMenus')
     if (menus === undefined) throw new Error('context menus are not mounted')
     const workspaceMenu = menus.resolve({ kind: 'workspace', value: {
-      workspaceId: workspace.workspaceId, path: workspace.path, displayTitle: workspace.title,
+      // The shared fixture Workspace was created over a real directory, so it declares a root.
+      workspaceId: workspace.workspaceId, path: workspace.path!, displayTitle: workspace.title,
     } })
     await workspaceMenu.ready
     expect(workspaceMenu.source.getSnapshot()).toEqual([])

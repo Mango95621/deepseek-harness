@@ -39,14 +39,14 @@ export async function apply(ctx: Context): Promise<void> {
   try {
     const table = domain.table('workspaces')
     await table.put(workspaceId, {
-      path: cwd,
+      roots: [cwd],
       title: 'List fixture',
       sessionIds: [alpha.id, SessionId('list-beta'), SessionId('list-archived')],
       createdAt: '2000-01-01T00:00:00.000Z',
       updatedAt: '2000-01-02T00:00:00.000Z',
     })
     await table.put(emptyId, {
-      path: emptyPath,
+      roots: [emptyPath],
       title: 'Empty workspace',
       sessionIds: [],
       createdAt: '2000-01-03T00:00:00.000Z',

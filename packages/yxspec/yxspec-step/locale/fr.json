@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Pilote d’étapes YXSpec",
+    "description": "Fournit les outils d’étape destinés au modèle qui avancent le flux étape par étape selon les preuves sur disque."
+  }
+}

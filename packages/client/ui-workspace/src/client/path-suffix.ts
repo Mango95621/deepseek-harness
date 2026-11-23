@@ -4,15 +4,18 @@
  * Map each Workspace whose display title another listed Workspace shares to
  * the shortest run of trailing path segments that no other same-titled
  * Workspace's path ends with, keeping the path's own separators. Workspaces
- * with a unique title get no entry.
+ * with a unique title get no entry, and neither does one that declares no
+ * repository root yet: it has no path to tell it apart by.
  * @param workspaces - id, display title, and canonical path of each listed Workspace.
  * @returns distinguishing suffix by Workspace id.
  */
 export function distinguishingPathSuffixes<Id>(
-  workspaces: readonly { readonly id: Id; readonly title: string; readonly path: string }[],
+  workspaces: readonly { readonly id: Id; readonly title: string; readonly path: string | null }[],
 ): ReadonlyMap<Id, string> {
   // Segments and the separators between them alternate: `/a/b` → ['', '/', 'a', '/', 'b'].
-  const rows = workspaces.map(workspace => ({ ...workspace, parts: workspace.path.split(/([\\/])/) }))
+  const rows = workspaces.flatMap(workspace => workspace.path === null
+    ? []
+    : [{ ...workspace, path: workspace.path, parts: workspace.path.split(/([\\/])/) }])
   const suffix = (parts: readonly string[], count: number): string => parts.slice(-(2 * count - 1)).join('')
   const suffixes = new Map<Id, string>()
   for (const row of rows) {

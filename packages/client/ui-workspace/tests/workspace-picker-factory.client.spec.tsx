@@ -32,7 +32,7 @@ afterEach(cleanup)
 beforeEach(() => { localStorage.clear() })
 
 const ALPHA = 'w-alpha' as WorkspaceId
-const ADD = '添加工作区…'
+const ADD = '添加项目…'
 
 /** Test-owned consumer surface: another plugin's dialog that owns the anchor, open state, and pick meaning. */
 function ImportDialog({ renderFactorySlot }: PropsRenderFactories) {
@@ -142,7 +142,7 @@ describe('workspace.picker Factory', () => {
       expect(screen.getByRole('status').textContent).toBe('none')
       await act(async () => {
         resolve({
-          workspaceId: 'w-project' as WorkspaceId, title: 'project', path: '/tmp/project',
+          workspaceId: 'w-project' as WorkspaceId, title: 'project', roots: ['/tmp/project'], path: '/tmp/project',
           sessionIds: [], createdAt: '0', updatedAt: '0',
         })
       })
@@ -153,7 +153,7 @@ describe('workspace.picker Factory', () => {
     }
   })
 
-  it('offers Add workspace only while a directory flow occupies the Factory hole', async () => {
+  it('offers Add project only while a directory flow occupies the Factory hole', async () => {
     const runtime = await bench()
     try {
       openMenu()

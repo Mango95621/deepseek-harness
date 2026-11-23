@@ -42,7 +42,6 @@ async function bench(options: { locale?: 'en' } = {}) {
   const runtime = await SlotTestRuntime.create()
   runtime.ctx.provide('shortcuts', { catalog: createSnapshotStore([]) } as never)
   runtime.ctx.provide('layout', { toggleSidebar: vi.fn() })
-  runtime.ctx.provide('uiWorkspace', { startSession: vi.fn() } as never)
   const locale = new LocaleRuntime(runtime.ctx)
   locale.register('common', { zh: commonZh, en: commonEn })
   if (options.locale === 'en') locale.setLocale('en')
@@ -57,8 +56,10 @@ describe('sidebar shell snapshots', () => {
   it('renders the expanded column in the default locale (zh, no setLocale)', async () => {
     const { runtime } = await bench()
     const slot = runtime.renderSlot('sidebar', { collapsed: false, width: 300, drawer: false })
-    // Wordmark + capsule both start a session in the expanded state.
-    expect(slot.view.getAllByRole('button', { name: '新建会话' })).toHaveLength(2)
+    // The shell renders no session control: no composition registers an
+    // occupant for the session-action seat, so its row is absent entirely.
+    expect(slot.view.queryByRole('button', { name: '新建会话' })).toBeNull()
+    expect(slot.container.querySelector('[data-slot="sidebar.session.action"]')).toBeNull()
     expect(slot.container).toMatchSnapshot()
     await runtime.dispose()
   })
@@ -66,21 +67,19 @@ describe('sidebar shell snapshots', () => {
   it('renders the expanded column (wordmark, capsule, empty holes)', async () => {
     const { runtime } = await bench({ locale: 'en' })
     const slot = runtime.renderSlot('sidebar', { collapsed: false, width: 300, drawer: false })
-    // Wordmark + capsule both start a session in the expanded state.
-    expect(slot.view.getAllByRole('button', { name: 'New session' })).toHaveLength(2)
+    // Wordmark plus the empty seats; no session control without an occupant.
+    expect(slot.view.queryByRole('button', { name: 'New session' })).toBeNull()
     expect(slot.container).toMatchSnapshot()
     await runtime.dispose()
   })
 
-  it('renders the New-session content through the unoccupied session-action HOC layer', async () => {
+  it('omits the session-action row while the seat has no occupant', async () => {
     const { runtime } = await bench({ locale: 'en' })
     const slot = runtime.renderSlot('sidebar', { collapsed: false, width: 300, drawer: false })
-    const layer = slot.container.querySelector('[data-slot="sidebar.session.action"]')
-    // With no occupant the layer renders the owner's content unchanged, so the
-    // capsule keeps its box and no wrapper element joins the row.
-    expect(layer?.children).toHaveLength(1)
-    expect(layer?.firstElementChild?.getAttribute('aria-label')).toBe('New session')
-    expect(layer?.firstElementChild?.tagName).toBe('BUTTON')
+    // The shell gates the whole row on occupancy: with no occupant there is
+    // neither the seat's outline nor a placeholder inside it.
+    expect(slot.container.querySelector('[data-slot="sidebar.session.action"]')).toBeNull()
+    expect(slot.container.querySelector('[class*="sessionActionRow"]')).toBeNull()
     await runtime.dispose()
   })
 
@@ -89,11 +88,12 @@ describe('sidebar shell snapshots', () => {
     const slot = runtime.renderSlot('sidebar', { collapsed: false, width: 300, drawer: false })
     const shell = slot.container.firstElementChild
     slot.update({ collapsed: true, width: 56, drawer: false })
-    // The wide content (wordmark shortcut) unmounts at the 150ms settle;
-    // only the rail's capsule remains a New-session button.
+    // The wide content (wordmark) unmounts at the 150ms settle; what remains
+    // is the rail chrome, which carries no session control of its own.
     await waitFor(() => {
-      expect(slot.view.getAllByRole('button', { name: 'New session' })).toHaveLength(1)
+      expect(slot.container.querySelector('[class*="wide"]')).toBeNull()
     })
+    expect(slot.view.queryByRole('button', { name: 'New session' })).toBeNull()
     expect(slot.container).toMatchSnapshot()
     // Same tree position: the owner flip re-rendered the shell in place.
     expect(slot.container.firstElementChild).toBe(shell)
@@ -103,11 +103,11 @@ describe('sidebar shell snapshots', () => {
   it('a locale switch refreshes mounted copy without re-registration', async () => {
     const { runtime, locale } = await bench()
     const slot = runtime.renderSlot('sidebar', { collapsed: false, width: 300, drawer: false })
-    expect(slot.view.getAllByRole('button', { name: '新建会话' })).toHaveLength(2)
+    expect(slot.view.getByRole('button', { name: '收起侧边栏' })).toBeTruthy()
     // Same fiber, same registration: setLocale alone re-renders the outlet.
     act(() => { locale.setLocale('en') })
-    expect(slot.view.getAllByRole('button', { name: 'New session' })).toHaveLength(2)
-    expect(slot.view.queryByRole('button', { name: '新建会话' })).toBeNull()
+    expect(slot.view.getByRole('button', { name: 'Collapse sidebar' })).toBeTruthy()
+    expect(slot.view.queryByRole('button', { name: '收起侧边栏' })).toBeNull()
     await runtime.dispose()
   })
 
@@ -118,7 +118,7 @@ describe('sidebar shell snapshots', () => {
       const slot = runtime.renderSlot('sidebar', { collapsed: false, width: 300, drawer: false })
       expect(slot.container).toMatchSnapshot('windows expanded')
       slot.update({ collapsed: true, width: 0, drawer: false })
-      expect(slot.view.getAllByRole('button', { name: 'New session' })).toHaveLength(1)
+      expect(slot.view.queryByRole('button', { name: 'New session' })).toBeNull()
       expect(slot.container).toMatchSnapshot('windows collapsed')
     } finally {
       await runtime.dispose()

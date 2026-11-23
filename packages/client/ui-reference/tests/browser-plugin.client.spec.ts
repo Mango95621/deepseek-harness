@@ -571,10 +571,10 @@ describe('directory header', () => {
     expect(source.header?.(session, { query: 'src', drilled: true })).toBeUndefined()
   })
 
-  it('trails the workspace root down to the directory being listed', async () => {
+  it('trails the project root down to the directory being listed', async () => {
     const { source } = await bench()
     expect(source.header?.(session, { query: 'src/module1/ind', drilled: true })).toEqual([
-      { label: 'Workspace', value: JSON.stringify({ kind: 'file', fileKind: 'directory', label: 'Workspace', mention: '@' }) },
+      { label: 'Project', value: JSON.stringify({ kind: 'file', fileKind: 'directory', label: 'Project', mention: '@' }) },
       { label: 'src', value: JSON.stringify({ kind: 'file', fileKind: 'directory', label: 'src', mention: '@src/' }) },
       {
         label: 'module1',

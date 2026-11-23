@@ -51,9 +51,9 @@ it.each([
 
 it.each([
   { locale: 'en', panel: 'Automation tasks', heading: 'Recommended', title: 'Daily brief',
-    prompt: 'Create an automation task named "Daily brief": every weekday at 9:00, review the last 24 hours of changes in the current workspace and list what needs my follow-up and what to do first today; when the workspace is a code repository, also cover new commits, pull requests awaiting my review, and failing CI.' },
+    prompt: 'Create an automation task named "Daily brief": every weekday at 9:00, review the last 24 hours of changes in the current project and list what needs my follow-up and what to do first today; when the project is a code repository, also cover new commits, pull requests awaiting my review, and failing CI.' },
   { locale: 'zh', panel: '自动化任务', heading: '推荐', title: '每日简报',
-    prompt: '创建一个名为「每日简报」的自动化任务：每个工作日 9:00 查看当前工作区过去 24 小时的变化，列出需要我跟进的事和今天先做的事；工作区是代码仓库时，也看新提交、待我评审的 PR 和失败的 CI。' },
+    prompt: '创建一个名为「每日简报」的自动化任务：每个工作日 9:00 查看当前项目过去 24 小时的变化，列出需要我跟进的事和今天先做的事；项目是代码仓库时，也看新提交、待我评审的 PR 和失败的 CI。' },
 ])('prefills a recommended task request from the empty task page in $locale', async (copy) => {
   const scaffold = await launchWebScaffold({ firstUse: true })
   let browser: Awaited<ReturnType<typeof chromium.launch>> | undefined
@@ -280,8 +280,8 @@ it('creates from a paused empty state, selects the task, and saves an inline edi
     await dialog.getByRole('button', { name: /^执行位置 / }).click()
     await page.getByRole('menuitem', { name: '新建会话并复用 首次运行时创建，之后沿用这个会话', exact: true }).waitFor()
     expect(await page.getByRole('menuitem').count()).toBe(2)
-    const workspace = dialog.getByRole('button', { name: /^关联工作区 / })
-    await expect.poll(() => workspace.textContent()).toContain('默认工作区')
+    const workspace = dialog.getByRole('button', { name: /^关联项目 / })
+    await expect.poll(() => workspace.textContent()).toContain('默认项目')
     await page.keyboard.press('Escape')
     // The workspace menu states each directory, so the default workspace names its folder.
     const defaultPath = scaffold.ctx.workspaceRegistry.list()[0]?.path

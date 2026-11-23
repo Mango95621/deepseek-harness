@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "YXSpec 流程面板",
+    "description": "从 yxspec 远程命名空间渲染 ASPICE 阶段模型与各阶段产物落地状态。"
+  }
+}

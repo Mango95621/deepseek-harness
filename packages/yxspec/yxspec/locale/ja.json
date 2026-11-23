@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "YXSpec プロセスモデル",
+    "description": "ASPICE ステージモデル、MCU/MPU デュアルトラック対応表、ゲート付きフローの仕様識別子を保持します。"
+  }
+}

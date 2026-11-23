@@ -40,7 +40,7 @@ const workspaces: WorkspaceSnapshot = {
 }
 function workspace(path: string, title: string): WorkspaceSnapshot['items'][number] {
   return {
-    workspaceId: `workspace:${title}` as WorkspaceId, path, title, sessionIds: [], createdAt: task.createdAt ?? '', updatedAt: task.updatedAt ?? '',
+    workspaceId: `workspace:${title}` as WorkspaceId, roots: [path], path, title, sessionIds: [], createdAt: task.createdAt ?? '', updatedAt: task.updatedAt ?? '',
   }
 }
 const registered: WorkspaceSnapshot = {
@@ -400,7 +400,7 @@ describe('Host task editor on the existing manager', () => {
     const project = within(modal).getByRole('button', { name: new RegExp('^' + dictionary['host.project'] + ' ') })
     expect(project.textContent).toContain(dictionary['host.defaultProject'])
     fireEvent.click(project)
-    // Each workspace states its directory, so the Default workspace title names a folder.
+    // Each workspace states its directory, so the Default project title names a folder.
     const items = screen.getAllByRole('menuitem')
     expect(items.map(item => item.textContent))
       .toEqual(['docs/work/docs', `${dictionary['host.defaultProject']}/work/default-workspace`])

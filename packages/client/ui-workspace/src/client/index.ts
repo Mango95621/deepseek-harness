@@ -65,6 +65,9 @@ import { WorkspacePicker, WorkspacePickerFactory } from './WorkspacePicker.tsx'
 import { en, ja, es, fr, de, ru, pt, zh, type WorkspaceKey } from './locales.ts'
 
 export type { StartSessionOptions, UiWorkspace } from './navigation.ts'
+// The port a guided-creation plugin implements. Exported so that plugin can name the shape it
+// provides without importing this package's values — the contract lives with its consumer.
+export type { ProjectOnboarding } from './navigation.ts'
 export type {
   DirectoryFlowOwnerProps, DirectoryFlowSlotName, DirectoryPickingHooks, DirectoryPickingInjected,
   MenuOpenState, RowToast, SessionRenameTarget, SessionRowOwnerProps, UseMenuOpenState, WorkspaceBrowserInjected,
@@ -175,8 +178,19 @@ export function apply(ctx: Context, config: SyncedConfig<WorkspaceNavigationConf
         : ctx.remoteAccess.source('workspace', workspaceId, action),
     },
   })
-  ctx.effect(() => ctx.locale.register(NS, { zh, en, ja, es, fr, de, ru, pt }), 'ui-workspace: dictionaries')
-  const shortcutControls = createWorkspaceShortcutControls()
+  ctx.effect(() => ctx.locale.register(NS, { zh, en, ja, de, fr, ru, pt, es }), 'ui-workspace: dictionaries')
+  // The guided-creation claim, read lazily on every gesture: a guide installs as its own plugin
+  // and may load before or after this one, so reading the service once at apply time would
+  // freeze the answer at whatever happened to be mounted then. `ctx.get` is the sanctioned
+  // optional-service read and answers undefined when no guide is installed, which leaves the
+  // directory flow as the add route.
+  const claimAdd = (): boolean => {
+    const guided = ctx.get('projectOnboarding')
+    if (guided === undefined) return false
+    guided.begin()
+    return true
+  }
+  const shortcutControls = createWorkspaceShortcutControls(claimAdd)
 
   const searchSessions: WorkspaceBrowserInjected['searchSessions'] = async (query, signal) => {
     const result = await sessions.search(query, signal)
@@ -195,6 +209,34 @@ export function apply(ctx: Context, config: SyncedConfig<WorkspaceNavigationConf
     getSnapshot: () => ctx.remote.$host,
     subscribe: listener => ctx.on('connection/reset', listener),
   }
+  // Whether a guided creation can serve the add gesture. A bare observable, so the two add
+  // affordances that ask (`+` in the header, the empty-state entry) re-answer when a guide
+  // loads or unloads — independent plugins, so the answer genuinely moves at runtime. The
+  // source object and its snapshot both keep their identity between changes, which is what the
+  // renderer's hook binding requires.
+  const guidedAddSource: HostObservable<boolean> = (() => {
+    const listeners = new Set<() => void>()
+    let value = ctx.get('projectOnboarding') !== undefined
+    const publish = (): void => {
+      const next = ctx.get('projectOnboarding') !== undefined
+      if (next === value) return
+      value = next
+      for (const listener of [...listeners]) listener()
+    }
+    ctx.effect(() => ctx.on('internal/service', (name: string) => {
+      if (name === 'projectOnboarding') publish()
+    }), 'ui-workspace: guided-creation availability')
+    return {
+      getSnapshot: () => value,
+      subscribe: (listener: () => void) => {
+        listeners.add(listener)
+        // Cordis may have provided the service before this source was read; the first
+        // subscriber is what makes the surface's answer live, so it reconciles on arrival.
+        publish()
+        return () => { listeners.delete(listener) }
+      },
+    }
+  })()
   const pickerFlowSource = flowSource('conversation.hero.workspace.directoryFlow')
   const factoryFlowSource = flowSource('workspace.picker.directoryFlow')
   const openSession: WorkspaceBrowserInjected['open'] = (sessionId) => {
@@ -369,6 +411,7 @@ export function apply(ctx: Context, config: SyncedConfig<WorkspaceNavigationConf
     closeAddWorkspace: shortcutControls.closeAdd,
     setDirectoryBusy: shortcutControls.directoryBusy,
     hooks: { workspaceActionRequest, contextMenuTarget: ctx.contextMenus.active, directoryFlow: browserFlowSource, hostInfo,
+      guidedCreation: guidedAddSource,
       workspaceShortcuts: shortcutControls.state, shortcuts: ctx.shortcuts.catalog },
   })
   const pickerInjected = (directoryFlow: HostObservable<boolean>) => (): WorkspacePickerInjected => ({

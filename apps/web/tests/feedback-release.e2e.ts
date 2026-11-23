@@ -15,7 +15,7 @@ import {
   compareOrRefreshGolden, fixtureUserPrompts,
   launchWebScaffold, readPersistedEvents, watchConsole, webSnapshotMode, type WebScaffold,
 } from './scaffold.ts'
-import { connectFreshWorkspace, newEnglishPage, saveFailureShot } from './support.ts'
+import { connectFreshWorkspace, newEnglishPage, saveFailureShot, startSessionIn } from './support.ts'
 
 const SNAPSHOT_DIR = fileURLToPath(new URL('../../../snapshots/web/feedback-release', import.meta.url))
 // Both routes borrow the same settled turn; this manifest references its owner.
@@ -288,7 +288,7 @@ describe.each(MODE === 'record' ? ['deepseek-official'] : ['deepseek-official', 
     await selectModel('Feedback mock')
     await selectModel('DeepSeek-V4-Flash')
     expect(captured()).toHaveLength(releasedCount)
-    await page.getByRole('button', { name: 'New session', exact: true }).last().click()
+    await startSessionIn(page, 'workspace')
     const input = page.locator('[data-composer-input][contenteditable="true"][data-placeholder="Describe what you want to build, / commands, @ files or sessions"]')
     await input.waitFor({ timeout: 15_000 })
     await input.fill('/feedback Feedback before any model request.')

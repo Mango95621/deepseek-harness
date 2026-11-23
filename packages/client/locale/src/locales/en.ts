@@ -34,7 +34,7 @@ export const en = {
   'expand': 'Expand',
   'back': 'Back',
   'brand.localBuild': 'DSH Local Build',
-  'workspace.defaultName': 'Default workspace',
+  'workspace.defaultName': 'Default project',
   'unknown': 'Unknown',
   'none': 'None',
   'truncated': 'Truncated',

@@ -1,0 +1,76 @@
+# Bilingual-pair consistency record for README.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write packages/yxspec/yxspec-gate/README.md
+/:
+  en: 462c710c4d3a5757
+  zh: 4b48b177dac519c8
+/deepseek-ai-dsh-yxspec-gate:
+  en: 717cb3310714da56
+  zh: 97f397523bf2fea4
+/deepseek-ai-dsh-yxspec-gate/summary:
+  en: 1fa559b6a738c08d
+  zh: 1a44892067cec8f6
+/deepseek-ai-dsh-yxspec-gate/table-of-contents:
+  en: d152484eb41ac6b4
+  zh: 09388d293f9be9cb
+/deepseek-ai-dsh-yxspec-gate/use-this-package:
+  en: cd2ca2eab7daafee
+  zh: 25fd89997d5e95b2
+/deepseek-ai-dsh-yxspec-gate/use-this-package/when-to-choose-it:
+  en: af83767646b217ff
+  zh: c74cd2ce50133c58
+/deepseek-ai-dsh-yxspec-gate/use-this-package/minimal-configuration:
+  en: 98b694aa00a14db0
+  zh: 9f748db8190db760
+/deepseek-ai-dsh-yxspec-gate/use-this-package/what-the-two-checks-do:
+  en: 9f2a554bc269457c
+  zh: e30bd05f75bddf7a
+/deepseek-ai-dsh-yxspec-gate/understand-the-implementation:
+  en: a0de12c6ab71dd2d
+  zh: 72adc91f6704aa02
+/deepseek-ai-dsh-yxspec-gate/understand-the-implementation/source-map:
+  en: ec45f622abcea596
+  zh: 1393cbbeebe5ffaa
+/deepseek-ai-dsh-yxspec-gate/further-exploration:
+  en: d168003759264145
+  zh: a473a33dafc6a72b
+/deepseek-ai-dsh-yxspec-gate/model-experience:
+  en: 215e7ba838619b7b
+  zh: a311da3843709f90
+/deepseek-ai-dsh-yxspec-gate/model-experience/tool-call-denial:
+  en: 944bfce56817e7ad
+  zh: cc0602ced6ae917a
+/deepseek-ai-dsh-yxspec-gate/model-experience/tool-call-denial/what-the-model-sees:
+  en: 2213a0e0a13eb3f5
+  zh: 0bb2d4d930a31efb
+/deepseek-ai-dsh-yxspec-gate/model-experience/tool-call-denial/what-the-model-sees/frozen-artifact-denial:
+  en: cac7eae2156e131b
+  zh: 07164440512fc97e
+/deepseek-ai-dsh-yxspec-gate/model-experience/tool-call-denial/what-the-model-sees/input-gate-denial:
+  en: 21c24353b3c97518
+  zh: 32fee3c92786b437
+/deepseek-ai-dsh-yxspec-gate/model-experience/tool-call-denial/token-effect:
+  en: ab96b70a3af32b62
+  zh: 10a4b80ff2f4d98d
+/deepseek-ai-dsh-yxspec-gate/model-experience/tool-call-denial/kv-cache-effect:
+  en: 2c707920d328e1ae
+  zh: 09acfd308fb51b84
+/deepseek-ai-dsh-yxspec-gate/model-experience/gate-script-exit-code:
+  en: 13baaf95948e70aa
+  zh: 2aa682a66044dee5
+/deepseek-ai-dsh-yxspec-gate/model-experience/gate-script-exit-code/what-the-model-sees:
+  en: 94b183df4a8e8916
+  zh: 6a47e7dc318550f7
+/deepseek-ai-dsh-yxspec-gate/model-experience/gate-script-exit-code/token-effect:
+  en: 1b82a2c8f9374075
+  zh: 7ecaa9eeacb6fb18
+/deepseek-ai-dsh-yxspec-gate/model-experience/gate-script-exit-code/kv-cache-effect:
+  en: c90f8fd2713ba2ef
+  zh: 684d1559ac10ec2a
+/deepseek-ai-dsh-yxspec-gate/known-limitations-and-deferred-work:
+  en: 403273d91824f386
+  zh: b0fb9e05f25ed480
+/deepseek-ai-dsh-yxspec-gate/known-limitations-and-deferred-work/dev-note:
+  en: e67f633dc6fe7773
+  zh: 3bb0c20c93f16f98

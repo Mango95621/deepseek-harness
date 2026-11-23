@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Modelo de proceso YXSpec",
+    "description": "Conserva el modelo de etapas ASPICE, el mapa de doble vía MCU/MPU y la identidad de especificación de los flujos con control."
+  }
+}

@@ -60,24 +60,48 @@ export interface SessionActivity {
 }
 
 /**
- * One workspace: a stable id over an existing directory, a display title, and
- * an ordered candidate account of sessions. Membership validates header cwd
- * against the workspace path, but preserves an existing account when its
- * fully qualified cwd is missing. Consumers only see this interface; the
- * implementation stays private.
+ * One project: a stable id over zero or more existing code-repository
+ * directories, a display title, and an ordered candidate account of sessions.
+ * Membership validates header cwd against the project's roots, but preserves
+ * an existing account when its fully qualified cwd is missing. Consumers only
+ * see this interface; the implementation stays private.
  */
 export interface Workspace {
   /** Stable record id (generated uuid). */
   readonly id: WorkspaceId
 
   /**
-   * Canonical directory path: the `fs.realpath` of the path given at create
-   * time (trailing slashes, `..`, and symlinks all resolved). Never rewritten
-   * afterwards, even when the directory disappears (see {@link status}).
+   * Every canonical repository root of this project, in the order the user
+   * declared them: each is the `fs.realpath` of the path given at create time
+   * (trailing slashes, `..`, and symlinks all resolved). Never rewritten
+   * afterwards, even when a directory disappears (see {@link status}).
+   *
+   * A vehicle electronics project normally spans several repositories — an IVI
+   * application, MCU firmware, and a vendored AOSP tree — so this is almost
+   * always longer than one. The first entry is the primary root.
+   *
+   * Empty for a project that has been named but not yet pointed at any
+   * repository. That is a normal intermediate state rather than an error: a
+   * project's directories are declared after its identity, and a caller that
+   * needs a working directory must decide what to do without one instead of
+   * silently inheriting the project directory.
    */
-  readonly path: string
+  readonly roots: readonly string[]
 
-  /** Display title. Defaults to the final path segment, or a filesystem root's own spelling; duplicates are allowed. */
+  /**
+   * The primary root: `roots[0]`. This is the working directory every session
+   * created against this project gets, and the base for relative paths and
+   * file-tree display.
+   *
+   * `undefined` while {@link roots} is empty. It is its own accessor because
+   * the overwhelming majority of consumers want exactly this one path and
+   * should not have to index an array; the `undefined` is what forces those
+   * consumers to handle the not-yet-configured project rather than assume a
+   * directory exists.
+   */
+  readonly path: string | undefined
+
+  /** Display title. Defaults to the final path segment of the primary root; duplicates are allowed. */
   readonly title: string
 
   /** ISO-8601 creation instant, stamped at create and never rewritten. */
@@ -113,13 +137,13 @@ export interface Workspace {
   setTitle(title: string): Promise<void>
 
   /**
-   * Prepend a session to this workspace's candidate account. An already
+   * Prepend a session to this project's candidate account. An already
    * accounted id resolves without writing, aside from the durable
    * filtered-candidate prune every accepted mutation performs. A new id's
    * live or persisted
-   * header cwd must resolve to an existing directory equal to {@link path};
-   * unknown ids, missing or invalid cwd values, and mismatches reject without
-   * writing.
+   * header cwd must resolve to an existing directory equal to one of
+   * {@link roots}; unknown ids, missing or invalid cwd values, and mismatches
+   * reject without writing.
    * @param sessionId - The session to record.
    * @returns resolution after durability.
    */
@@ -150,10 +174,10 @@ export interface Workspace {
   detachSession(sessionId: SessionId): Promise<void>
 
   /**
-   * Live directory check, uncached: whether {@link path} currently exists and
-   * is a directory. A missing directory never mutates the record — the
-   * directory may only be temporarily moved.
-   * @returns `'ok'` when the directory exists, `'missing-dir'` otherwise.
+   * Live directory check, uncached: whether every one of {@link roots}
+   * currently exists and is a directory. A missing directory never mutates the
+   * record — the directory may only be temporarily moved.
+   * @returns `'ok'` when every root exists, `'missing-dir'` otherwise.
    */
   status(): Promise<'ok' | 'missing-dir'>
 }

@@ -337,6 +337,20 @@ flowchart LR
   svc_cordisInspect["ctx.cordisInspect<br/>Dynamic Cordis inspect registry"]
   pkg_experimental_liveshare["experimental-liveshare"]
   svc_liveshareShares["ctx.liveshareShares<br/>Owner share management Remote"]
+  pkg_yxspec["yxspec"]
+  svc_yxspec["ctx.yxspec<br/>YXSpec ASPICE process model"]
+  pkg_yxspec_artifact["yxspec-artifact"]
+  pkg_yxspec_dispatch["yxspec-dispatch"]
+  pkg_yxspec_freeze["yxspec-freeze"]
+  pkg_yxspec_gate["yxspec-gate"]
+  pkg_yxspec_api["yxspec-api"]
+  svc_yxspecArtifacts["ctx.yxspecArtifacts<br/>YXSpec artifact ledger"]
+  svc_yxspecDispatch["ctx.yxspecDispatch<br/>YXSpec blind step dispatch"]
+  svc_yxspecController["ctx.yxspecController<br/>YXSpec process Remote"]
+  pkg_client_ui_yxspec["client-ui-yxspec"]
+  svc_yxspecRemote["ctx.yxspecRemote<br/>YXSpec build-server Remote namespace"]
+  pkg_yxspec_remote["yxspec-remote"]
+  svc_yxspecRemoteController["ctx.yxspecRemoteController<br/>YXSpec build-server declarations"]
   pkg_action_cards --> svc_actionCards
   pkg_agent --> svc_agents
   pkg_agent_default_model --> svc_agentDefaultModel
@@ -517,6 +531,12 @@ flowchart LR
   pkg_working_directory --> svc_workingDirectory
   pkg_workspace --> svc_workspaceRegistry
   pkg_workspace_changes --> svc_workspaceChanges
+  pkg_yxspec --> svc_yxspec
+  pkg_yxspec_api --> svc_yxspecController
+  pkg_yxspec_api --> svc_yxspecRemote
+  pkg_yxspec_artifact --> svc_yxspecArtifacts
+  pkg_yxspec_dispatch --> svc_yxspecDispatch
+  pkg_yxspec_remote --> svc_yxspecRemoteController
   svc_actionCards --> pkg_client_ui_action_cards
   svc_actionCards --> pkg_creation_recommendations
   svc_agentDefaultModel --> pkg_api_session_controller
@@ -689,6 +709,15 @@ flowchart LR
   svc_workspaceRegistry --> pkg_api_session_controller
   svc_workspaceRegistry --> pkg_api_workspace_controller
   svc_worktrees --> pkg_experimental_tool_worktree
+  svc_yxspec --> pkg_yxspec_api
+  svc_yxspec --> pkg_yxspec_artifact
+  svc_yxspec --> pkg_yxspec_dispatch
+  svc_yxspec --> pkg_yxspec_freeze
+  svc_yxspec --> pkg_yxspec_gate
+  svc_yxspecArtifacts --> pkg_yxspec_api
+  svc_yxspecArtifacts --> pkg_yxspec_gate
+  svc_yxspecController --> pkg_client_ui_yxspec
+  svc_yxspecRemoteController --> pkg_yxspec_api
   svc_fs -. event gate .-> pkg_fs_observation_policy
 ```
 
@@ -814,5 +843,11 @@ flowchart LR
 | `ctx.dynamicCordisRunner` | `core` | [`cordis-host-runner`](../packages/extensions/cordis-host-runner) | - | [`tool-cordis`](../packages/extensions/tool-cordis) | - | Owns the in-memory definition registry, the vm sandbox for host halves, and the request-run round trip; browser pages reach the same service over the wire through its remote namespace. |
 | `ctx.cordisInspect` | `core` | [`cordis-host-runner`](../packages/extensions/cordis-host-runner) | - | [`tool-cordis`](../packages/extensions/tool-cordis) | - | Registers host inspect providers, mirrors the client provider manifest, and routes client queries through the dynamic Cordis transport. |
 | `ctx.liveshareShares` | `service` | [`experimental-liveshare`](../packages/experimental/liveshare) | - | - | - | Publishes the owner share-management operations as one Typert Remote namespace that the owner client face calls; every method delegates to the same operations the same-origin routes used. |
+| `ctx.yxspec` | `core` | [`yxspec`](../packages/yxspec/yxspec) | - | [`yxspec-artifact`](../packages/yxspec/yxspec-artifact), [`yxspec-dispatch`](../packages/yxspec/yxspec-dispatch), [`yxspec-freeze`](../packages/yxspec/yxspec-freeze), [`yxspec-gate`](../packages/yxspec/yxspec-gate), [`yxspec-api`](../packages/yxspec/yxspec-api) | - | Owns the declared stage/step model read from the skill tree and the landed/missing verdict for each step's declared inputs. Every other YXSpec plugin addresses the process through it rather than re-reading the declarations. |
+| `ctx.yxspecArtifacts` | `core` | [`yxspec-artifact`](../packages/yxspec/yxspec-artifact) | - | [`yxspec-gate`](../packages/yxspec/yxspec-gate), [`yxspec-api`](../packages/yxspec/yxspec-api) | - | Decides whether one step's declared artifacts have landed, which is the judgement the gate consults before letting a step run. |
+| `ctx.yxspecDispatch` | `core` | [`yxspec-dispatch`](../packages/yxspec/yxspec-dispatch) | - | - | - | Implements LD-027 blind dispatch: it selects the agent and skills for a step from the declared model alone, without exposing the step's content to the dispatcher. |
+| `ctx.yxspecController` | `service` | [`yxspec-api`](../packages/yxspec/yxspec-api) | - | [`client-ui-yxspec`](../packages/client/ui-yxspec) | - | Publishes the stage model and stage status as the `yxspec` Typert Remote namespace the browser panel reads. Every Host service it consults is resolved per call, so an unmounted ledger surfaces as a typed Remote failure rather than holding the plugin pending. |
+| `ctx.yxspecRemote` | `service` | [`yxspec-api`](../packages/yxspec/yxspec-api) | - | - | - | Names the `yxspecRemote` Typert Remote namespace the client reads build-server declarations through; the descriptors come from the Remote owner and this key is the Carriers' service face for it. |
+| `ctx.yxspecRemoteController` | `core` | [`yxspec-remote`](../packages/yxspec/yxspec-remote) | - | [`yxspec-api`](../packages/yxspec/yxspec-api) | - | Owns the declared remote build servers for a project and the probe that records each one's reachability, publishing them under the `yxspecRemote` namespace. |
 
 Maintenance mode: hybrid: services are discovered from Cordis declarations; interface/implementation/consumer roles are classified in `scripts/gen-doc-graphs.ts` with a completeness guard.

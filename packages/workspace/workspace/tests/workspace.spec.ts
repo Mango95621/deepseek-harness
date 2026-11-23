@@ -19,12 +19,20 @@ import WorkspaceRegistry, {
   type workspaceDomainState,
   WorkspaceMoveInvalidError,
   WorkspaceOrderInvalidError,
+  workspaceRecord,
 } from '../src/index.ts'
 import type { WorkspaceDomainState, WorkspaceRecord } from '../src/index.ts'
 import { defaultWorkspaceTitle, fullyQualifiedWorkspacePath } from '../src/paths.ts'
 import * as workspacePaths from '../src/paths.ts'
 
-const DOMAIN_VERSION = 2
+const DOMAIN_VERSION = 3
+
+/**
+ * Domain version whose records still carried a single `path`. Kept so the
+ * preprocess-lift upgrade path stays under test: a v2 medium must open under
+ * the v3 spec and read its lone directory back as `roots: [path]`.
+ */
+const LEGACY_DOMAIN_VERSION = 2
 
 const header = (id: string, cwd?: string, createdAt = 0): SessionHeader => ({
   version: SESSION_FORMAT_VERSION,
@@ -141,8 +149,34 @@ function selectiveFailureBackend(
 
 function record(path: string, sessionIds: string[], createdAt = '2026-07-24T00:00:00.000Z'): WorkspaceRecord {
   return {
+    roots: [path],
+    title: basename(path),
+    sessionIds: sessionIds.map(brandString<SessionId>),
+    createdAt,
+    updatedAt: createdAt,
+  }
+}
+
+/**
+ * A record in the pre-multi-root shape: one `path` field, no `roots`. Only
+ * used to seed a medium at {@link LEGACY_DOMAIN_VERSION}, proving the v3
+ * schema reads v2 records without a startup rewrite.
+ */
+function legacyRecord(path: string, sessionIds: string[], createdAt = '2026-07-24T00:00:00.000Z'): unknown {
+  return {
     path,
     title: basename(path),
+    sessionIds: sessionIds.map(brandString<SessionId>),
+    createdAt,
+    updatedAt: createdAt,
+  }
+}
+
+/** A record over several roots, primary first. */
+function multiRecord(roots: string[], sessionIds: string[], createdAt = '2026-07-24T00:00:00.000Z'): WorkspaceRecord {
+  return {
+    roots: [...roots],
+    title: basename(roots[0]!),
     sessionIds: sessionIds.map(brandString<SessionId>),
     createdAt,
     updatedAt: createdAt,
@@ -159,9 +193,10 @@ type StoredDomainState = z.input<typeof workspaceDomainState>
 function storedPool(
   entries: Array<[string, WorkspaceRecord]>,
   state: StoredDomainState,
+  version: number = DOMAIN_VERSION,
 ): MemoryMediaPool {
   const pool = new MemoryMediaPool()
-  pool.versions.set('workspace', DOMAIN_VERSION)
+  pool.versions.set('workspace', version)
   pool.media.set('workspace', {
     tables: new Map([['workspaces', new Map<string, unknown>(entries)]]),
     global: state,
@@ -549,7 +584,7 @@ describe('WorkspaceRegistry create and lookup', () => {
     expect(result.registry.get(workspace.id)).toBe(workspace)
     expect(result.registry.list()).toEqual([workspace])
     expect(storedState(pool).workspaceIds).toEqual([workspace.id])
-    expect(storedRecord(pool, workspace.id)).toMatchObject({ path: dir })
+    expect(storedRecord(pool, workspace.id)).toMatchObject({ roots: [dir] })
   })
 
   it('commits deletion and leaves a recoverable marker when marker cleanup fails', async () => {
@@ -1600,5 +1635,305 @@ describe('archive follow-up lifecycle', () => {
       expect(storedState(result.pool).archivedSessionIds).toEqual(['cleanup-error'])
       expect(warning).toHaveBeenCalled()
     } finally { await result.ctx.fiber.dispose() }
+  })
+})
+
+// A vehicle program spans several electronic systems, so one project routinely
+// tracks more than one repository: the IVI application, the MCU firmware, a
+// shared middleware checkout. The registry models that as an ordered root
+// list whose first entry stays primary, and the suite below locks the whole
+// surface: creation from a list, resolution and session attachment through any
+// root, per-root health, root add/remove, the invariants that keep the list
+// unambiguous, and the v2 → v3 medium upgrade that lifts a lone `path`.
+describe('project multi-root repositories', () => {
+  it('creates a project over several roots and keeps the first as primary', async () => {
+    const ivi = await makeDir('multi-ivi')
+    const mcu = await makeDir('multi-mcu')
+    const shared = await makeDir('multi-shared')
+    const result = await harness()
+    onTestFinished(() => result.ctx.fiber.dispose())
+
+    const project = await result.registry.create([ivi, mcu, shared])
+    expect(project.roots).toEqual([ivi, mcu, shared])
+    expect(project.path).toBe(ivi)
+    // `path` is an alias for the primary root, never a separate field.
+    expect(project.path).toBe(project.roots[0])
+    expect(storedRecord(result.pool, project.id)).toMatchObject({ roots: [ivi, mcu, shared] })
+  })
+
+  it('accepts a one-element list exactly like a bare path', async () => {
+    const sole = await makeDir('single-as-list')
+    const result = await harness()
+    onTestFinished(() => result.ctx.fiber.dispose())
+
+    const project = await result.registry.create([sole])
+    expect(project.roots).toEqual([sole])
+    expect(project.path).toBe(sole)
+    // The same directory resolving through the bare-path form returns it.
+    await expect(result.registry.create(sole)).resolves.toBe(project)
+  })
+
+  it('resolves the project from any declared root, not only the primary', async () => {
+    const ivi = await makeDir('resolve-ivi')
+    const mcu = await makeDir('resolve-mcu')
+    const project = await harness()
+    onTestFinished(() => project.ctx.fiber.dispose())
+    const created = await project.registry.create([ivi, mcu])
+
+    await expect(project.registry.resolveByPath(ivi)).resolves.toBe(created)
+    await expect(project.registry.resolveByPath(mcu)).resolves.toBe(created)
+    const elsewhere = await makeDir('resolve-elsewhere')
+    await expect(project.registry.resolveByPath(elsewhere)).resolves.toBeUndefined()
+  })
+
+  it('attaches a session whose cwd sits in a secondary root and rejects a non-root cwd', async () => {
+    const ivi = await makeDir('attach-ivi')
+    const mcu = await makeDir('attach-mcu')
+    const outside = await makeDir('attach-outside')
+    const sessions = [header('in-mcu', mcu), header('outside', outside)]
+    const result = await harness({ sessions })
+    onTestFinished(() => result.ctx.fiber.dispose())
+    const project = await result.registry.create([ivi, mcu])
+
+    // The agent routinely starts a session in the firmware root while the
+    // primary root is the application checkout.
+    await expect(project.attachSession(brandString<SessionId>('in-mcu'))).resolves.toBeUndefined()
+    expect(project.sessionIds).toEqual(['in-mcu'])
+    await expect(project.attachSession(brandString<SessionId>('outside'))).rejects.toThrow(/none of 2 declared root\(s\)/)
+    expect(project.sessionIds).toEqual(['in-mcu'])
+    expect(storedRecord(result.pool, project.id).sessionIds).toEqual(['in-mcu'])
+  })
+
+  it('reports missing-directory when any single root disappears, and ok only when all exist', async () => {
+    const ivi = await makeDir('status-ivi')
+    const mcu = await makeDir('status-mcu')
+    const result = await harness()
+    onTestFinished(() => result.ctx.fiber.dispose())
+    const project = await result.registry.create([ivi, mcu])
+    await expect(project.status()).resolves.toBe('ok')
+
+    await rm(mcu, { recursive: true })
+    await expect(project.status()).resolves.toBe('missing-dir')
+    // The primary root being the healthy one does not mask a dead sibling.
+    await expect(realpath(ivi)).resolves.toBe(ivi)
+  })
+
+  it('creates a project from a title alone, with no repository root yet', async () => {
+    const result = await harness()
+    onTestFinished(() => result.ctx.fiber.dispose())
+
+    const project = await result.registry.create([], 'Vehicle platform')
+    expect(project.roots).toEqual([])
+    expect(project.path).toBeUndefined()
+    expect(project.title).toBe('Vehicle platform')
+    expect(storedRecord(result.pool, project.id)).toMatchObject({ roots: [], title: 'Vehicle platform' })
+    expect(result.registry.list()).toEqual([project])
+
+    // A rootless project has no path to match on, so reuse cannot apply: the
+    // same title asked for twice yields two distinct projects.
+    const second = await result.registry.create([], 'Vehicle platform')
+    expect(second).not.toBe(project)
+    expect(second.id).not.toBe(project.id)
+
+    // A blank title is no title: it cannot stand in for the missing directory.
+    await expect(result.registry.create([], '   ')).rejects.toThrow(/without a directory or a title/)
+    // A blank title on a rooted create leaves the root's segment to name it.
+    await expect(result.registry.create(await makeDir('blank-title'), '   '))
+      .resolves.toMatchObject({ title: 'blank-title' })
+  })
+
+  it('appends and removes roots without ever moving the primary', async () => {
+    const ivi = await makeDir('roots-ivi')
+    const mcu = await makeDir('roots-mcu')
+    const shared = await makeDir('roots-shared')
+    const result = await harness()
+    onTestFinished(() => result.ctx.fiber.dispose())
+    const project = await result.registry.create(ivi)
+
+    await result.registry.addRoot(project.id, mcu)
+    await result.registry.addRoot(project.id, shared)
+    expect(project.roots).toEqual([ivi, mcu, shared])
+    expect(project.path).toBe(ivi)
+
+    await result.registry.removeRoot(project.id, mcu)
+    expect(project.roots).toEqual([ivi, shared])
+    expect(project.path).toBe(ivi)
+    expect(storedRecord(result.pool, project.id).roots).toEqual([ivi, shared])
+  })
+
+  it('treats add/remove of an already-settled root as a no-op write', async () => {
+    const ivi = await makeDir('idempotent-ivi')
+    const mcu = await makeDir('idempotent-mcu')
+    const result = await harness()
+    onTestFinished(() => result.ctx.fiber.dispose())
+    const project = await result.registry.create([ivi, mcu])
+
+    await result.registry.addRoot(project.id, mcu)
+    await result.registry.removeRoot(project.id, await makeDir('idempotent-unrelated'))
+    expect(project.roots).toEqual([ivi, mcu])
+  })
+
+  it('drops the last root, leaving a project with no repository', async () => {
+    const sole = await makeDir('last-root')
+    const elsewhere = await makeDir('last-root-elsewhere')
+    const result = await harness()
+    onTestFinished(() => result.ctx.fiber.dispose())
+    result.setSessions([header('unrooted', elsewhere)])
+    const project = await result.registry.create(sole)
+
+    await result.registry.removeRoot(project.id, sole)
+    expect(project.roots).toEqual([])
+    // With no root there is no working directory, so no session can be attached —
+    // refused before its own cwd is even compared against a root list.
+    expect(project.path).toBeUndefined()
+    await expect(project.attachSession(brandString<SessionId>('unrooted')))
+      .rejects.toThrow(/declares no repository root yet/)
+  })
+
+  it('rejects a duplicated root, a non-directory root, and a rootless untitled create', async () => {
+    const dir = await makeDir('invalid-roots')
+    const file = join(base, 'invalid-roots-file')
+    await writeFile(file, 'not a directory')
+    const result = await harness()
+    onTestFinished(() => result.ctx.fiber.dispose())
+
+    await expect(result.registry.create([dir, dir])).rejects.toThrow(/declared once/)
+    await expect(result.registry.create([])).rejects.toThrow(/without a directory or a title/)
+    await expect(result.registry.create([dir, file])).rejects.toThrow(/not a directory/)
+    expect(result.registry.list()).toEqual([])
+  })
+
+  it('refuses a root that is not a directory, for create and for a later add alike', async () => {
+    const dir = await makeDir('add-root-not-a-dir')
+    const file = join(base, 'add-root-not-a-dir-file')
+    await writeFile(file, 'not a directory')
+    const result = await harness()
+    onTestFinished(() => result.ctx.fiber.dispose())
+    const project = await result.registry.create(dir)
+
+    // The guard runs before the project lookup and before any write, so a
+    // refused add leaves both the roots and the durable record untouched.
+    await expect(result.registry.addRoot(project.id, file)).rejects.toThrow(/not a directory/)
+    await expect(result.registry.addRoot(project.id, join(base, 'add-root-missing')))
+      .rejects.toMatchObject({ code: 'ENOENT' })
+    expect(project.roots).toEqual([dir])
+    expect(storedRecord(result.pool, project.id).roots).toEqual([dir])
+  })
+
+  it('refuses to add a root to an unknown project', async () => {
+    const dir = await makeDir('unknown-root-add')
+    const result = await harness()
+    onTestFinished(() => result.ctx.fiber.dispose())
+
+    await expect(result.registry.addRoot(brandString<WorkspaceId>('11111111-1111-4111-8111-111111111111'), dir))
+      .rejects.toThrow(/no project carries id/)
+  })
+
+  it('refuses to remove a root from an unknown project', async () => {
+    const dir = await makeDir('unknown-root-remove')
+    const result = await harness()
+    onTestFinished(() => result.ctx.fiber.dispose())
+
+    await expect(result.registry.removeRoot(brandString<WorkspaceId>('22222222-2222-4222-8222-222222222222'), dir))
+      .rejects.toThrow(/no project carries id/)
+  })
+
+  it('lifts a legacy path only from a well-formed record and defers anything else to the object schema', () => {
+    const legacy = legacyRecord('/w/legacy', ['legacy-session']) as Record<string, unknown>
+
+    // A record already carrying `roots` is returned untouched: no double lift.
+    expect(workspaceRecord.parse({ ...legacy, roots: ['/w/current'] }).roots).toEqual(['/w/current'])
+
+    // The preprocess step is a lift, not a validator: a value that is not an
+    // object at all, or an object with neither `roots` nor a string `path`, is
+    // handed to the object schema unchanged and fails there.
+    for (const value of [null, 42, 'workspace', ['/w/array']]) {
+      expect(workspaceRecord.safeParse(value).success).toBe(false)
+    }
+    expect(workspaceRecord.safeParse({ ...legacy, path: 42 }).success).toBe(false)
+    expect(workspaceRecord.safeParse({ title: 'no roots and no path' }).success).toBe(false)
+    // The lifted shape is still subject to the object schema's own rules.
+    expect(workspaceRecord.safeParse({ ...legacy, title: 42 }).success).toBe(false)
+  })
+
+  it('reads a v2 medium lazily, lifting its lone path into roots without a startup rewrite', async () => {
+    const dir = await makeDir('legacy-lift')
+    const id = brandString<WorkspaceId>('00000000-0000-4000-8000-0000000000c1')
+    const pool = storedPool(
+      [[id, legacyRecord(dir, []) as WorkspaceRecord]],
+      { initialized: true, workspaceIds: [id] },
+      LEGACY_DOMAIN_VERSION,
+    )
+    const result = await harness({ pool, sessions: [header('legacy-session', dir)] })
+    onTestFinished(() => result.ctx.fiber.dispose())
+
+    const project = result.registry.get(id)!
+    expect(project.roots).toEqual([dir])
+    expect(project.path).toBe(dir)
+    // No record-level write happened during bootstrap, so the raw medium still
+    // carries the old shape — the upgrade is on read, not on open.
+    expect(storedRecord(pool, id)).toMatchObject({ path: dir })
+    expect(storedRecord(pool, id).roots).toBeUndefined()
+  })
+
+  it('boots a multi-root record back from the medium with its roots intact', async () => {
+    const ivi = await makeDir('boot-ivi')
+    const mcu = await makeDir('boot-mcu')
+    const id = brandString<WorkspaceId>('00000000-0000-4000-8000-0000000000c2')
+    const pool = storedPool(
+      [[id, multiRecord([ivi, mcu], ['in-mcu'])]],
+      { initialized: true, workspaceIds: [id] },
+    )
+    const result = await harness({ pool, sessions: [header('in-mcu', mcu)] })
+    onTestFinished(() => result.ctx.fiber.dispose())
+
+    const project = result.registry.get(id)!
+    expect(project.roots).toEqual([ivi, mcu])
+    expect(project.path).toBe(ivi)
+    expect(project.sessionIds).toEqual(['in-mcu'])
+  })
+
+  it('orders rootless records by creation time against a rooted one and against each other', async () => {
+    const rooted = await makeDir('rank-rooted')
+    const rootedId = brandString<WorkspaceId>('00000000-0000-4000-8000-000000000030')
+    const olderId = brandString<WorkspaceId>('00000000-0000-4000-8000-000000000031')
+    const newerId = brandString<WorkspaceId>('00000000-0000-4000-8000-000000000032')
+    const rootless = (createdAt: string): WorkspaceRecord =>
+      ({ ...record(rooted, [], createdAt), roots: [] })
+    // A rootless record has no summary row to rank by, so the comparator falls
+    // back to its own createdAt; a rooted one still ranks by its session group.
+    // Two rootless records are seeded so both sides of the fallback are
+    // exercised, and the prior order names the rooted project first so only the
+    // time fallback can lift a rootless project ahead of it.
+    const pool = storedPool(
+      [
+        [rootedId, record(rooted, [], '2026-07-24T00:00:00.000Z')],
+        [olderId, rootless('2026-07-25T00:00:00.000Z')],
+        [newerId, rootless('2026-07-26T00:00:00.000Z')],
+      ],
+      { initialized: false, workspaceIds: [rootedId, olderId, newerId] },
+    )
+
+    const result = await harness({ pool, sessions: [header('rooted-session', rooted, 100)] })
+    expect(result.registry.list().map(workspace => workspace.id)).toEqual([newerId, olderId, rootedId])
+    expect(result.registry.get(newerId)!.path).toBeUndefined()
+    expect(result.registry.get(newerId)!.roots).toEqual([])
+  })
+
+  it('rejects a medium where two projects claim the same root', async () => {
+    const shared = await makeDir('conflict-shared')
+    const onlyA = await makeDir('conflict-a')
+    const onlyB = await makeDir('conflict-b')
+    const firstId = '00000000-0000-4000-8000-0000000000d1'
+    const secondId = '00000000-0000-4000-8000-0000000000d2'
+    const pool = storedPool(
+      [
+        [firstId, multiRecord([shared, onlyA], [])],
+        [secondId, multiRecord([shared, onlyB], [])],
+      ],
+      { initialized: true, workspaceIds: [brandString<WorkspaceId>(firstId), brandString<WorkspaceId>(secondId)] },
+    )
+
+    await expect(harness({ pool })).rejects.toThrow(/claimed/)
   })
 })

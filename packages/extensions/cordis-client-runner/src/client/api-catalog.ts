@@ -400,9 +400,9 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
     description: 'Workspace Controller\'s Client service face.',
     methods: [
       {
-        signature: 'create(input: { path: string }): Promise<WorkspaceView>',
-        description: 'Register an existing path as a Workspace.',
-        parameters: [{ name: 'input', description: 'Host create payload.' }],
+        signature: 'create(input: WorkspaceCreateRequest): Promise<WorkspaceView>',
+        description: 'Register one or more existing directories as a project, or create a project from a name alone.\n\nA single directory is the common case; several declare a multi-repository project, whose first entry is the primary root and thus the working directory of the project\'s sessions. Passing neither `path` nor `roots` creates a project whose repositories are attached afterwards through addRoot; `title` is then required, since it is the only identity the project has.',
+        parameters: [{ name: 'input', description: 'Host create payload: one directory, the root list, or a title alone.' }],
         returns: 'the created or idempotently resolved Workspace.',
       },
       {
@@ -1108,8 +1108,12 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export type UseFactorySlot<F extends keyof SlotFactoryMap & string> = <N extends FactoryLocalNameOf<F>>(name: N, fallback: FactoryLocalComponent<F, N>) => SlotComponent<FactoryLocalInputPropsOf<F, N>>;',
   },
   {
+    name: 'WorkspaceCreateRequest',
+    declaration: 'export interface WorkspaceCreateRequest {\n    readonly path?: string;\n    readonly roots?: readonly string[];\n    readonly title?: string;\n}',
+  },
+  {
     name: 'WorkspaceView',
-    declaration: 'export interface WorkspaceView {\n    readonly workspaceId: WorkspaceId;\n    readonly path: string;\n    readonly title: string;\n    readonly sessionIds: readonly SessionId[];\n    readonly createdAt: string;\n    readonly updatedAt: string;\n}',
+    declaration: 'export interface WorkspaceView {\n    readonly workspaceId: WorkspaceId;\n    readonly roots: readonly string[];\n    readonly path: string | null;\n    readonly title: string;\n    readonly sessionIds: readonly SessionId[];\n    readonly createdAt: string;\n    readonly updatedAt: string;\n}',
   },
 ]
 

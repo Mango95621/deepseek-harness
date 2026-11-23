@@ -135,7 +135,7 @@ function selectedMode(): 'view' | 'write' | undefined {
   const tablist = screen.queryByRole('tablist', { name: 'Session permission' })
   const selected = tablist?.querySelector<HTMLElement>('[aria-selected="true"]')
   if (selected?.textContent === 'Read only') return 'view'
-  if (selected?.textContent === 'Workspace write') return 'write'
+  if (selected?.textContent === 'Project write') return 'write'
   return undefined
 }
 
@@ -395,7 +395,7 @@ describe('Liveshare dialog product acceptance', () => {
     expect(document.body.textContent).not.toContain('Only people I approve')
     const permission = screen.getByRole('tablist', { name: 'Session permission' })
     expect(within(permission).getAllByRole('tab').map(tab => tab.textContent))
-      .toEqual(['Read only', 'Workspace write'])
+      .toEqual(['Read only', 'Project write'])
     expect(screen.getByRole('switch', { name: 'Allow viewers to fork the session' })).toBeDefined()
     // No share-management call searches people: new shares are organization links.
     expect(host.calls.some(call => call.method.toLowerCase().includes('search'))).toBe(false)
@@ -572,7 +572,7 @@ describe('Liveshare dialog product acceptance', () => {
     const granted = await showDialog(200, false, () => {}, existing, undefined, undefined, undefined,
       { sessionMode: 'write' })
     await act(async () => {
-      fireEvent.click(screen.getByRole('tab', { name: 'Workspace write' }))
+      fireEvent.click(screen.getByRole('tab', { name: 'Project write' }))
     })
     await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Create share' })) })
     expect(shareRequest(granted)).toMatchObject({ sessionMode: 'write' })
@@ -584,7 +584,7 @@ describe('Liveshare dialog product acceptance', () => {
     await showDialog(200, false, () => {}, existing, undefined, undefined, undefined,
       { sessionMode: 'view' })
     await act(async () => {
-      fireEvent.click(screen.getByRole('tab', { name: 'Workspace write' }))
+      fireEvent.click(screen.getByRole('tab', { name: 'Project write' }))
     })
     await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Create share' })) })
     expect(screen.getByText(/did not report the session permission/u)).toBeDefined()
@@ -638,9 +638,9 @@ describe('Liveshare dialog product acceptance', () => {
     expect(screen.getByText(/Read only: viewers read files/u)).toBeDefined()
     expect(document.body.textContent).not.toContain('earlier messages, tool output, file paths, and attachments')
     await act(async () => {
-      fireEvent.click(screen.getByRole('tab', { name: 'Workspace write' }))
+      fireEvent.click(screen.getByRole('tab', { name: 'Project write' }))
     })
-    expect(screen.getByText(/Workspace write: the viewer works in a bounded writable sandbox/u)).toBeDefined()
+    expect(screen.getByText(/Project write: the viewer works in a bounded writable sandbox/u)).toBeDefined()
     expect(screen.queryByText(/cannot send messages or run tools/u)).toBeNull()
   })
 

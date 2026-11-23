@@ -1246,8 +1246,8 @@ describe('web e2e: plugin manager', () => {
     const review = panel.locator('[data-plugin-row]', { hasText: '@fixture/bundle/review' })
     await search.getByText('文件搜索', { exact: true }).waitFor()
     await review.getByText('代码审查', { exact: true }).waitFor()
-    expect(await search.getByText('搜索工作区中的文件。', { exact: true }).count()).toBe(1)
-    expect(await review.getByText('审查工作区中的改动。', { exact: true }).count()).toBe(1)
+    expect(await search.getByText('搜索项目中的文件。', { exact: true }).count()).toBe(1)
+    expect(await review.getByText('审查项目中的改动。', { exact: true }).count()).toBe(1)
     await panel.getByText('Registry description for the fixture bundle.', { exact: true }).first().waitFor()
     // The README detail document loads asynchronously after the description.
     const readmeHeading = panel.locator('[data-detail-document]').getByRole('heading', { name: 'Fixture bundle', exact: true })
@@ -1261,7 +1261,7 @@ describe('web e2e: plugin manager', () => {
       await search.getByText('File Search', { exact: true }).waitFor()
       expect(await review.getByText('@fixture/bundle/review', { exact: true }).count()).toBeGreaterThan(0)
       expect(await search.getByText('Search package introduction.', { exact: true }).count()).toBe(0)
-      expect(await review.getByText('审查工作区中的改动。', { exact: true }).count()).toBe(0)
+      expect(await review.getByText('审查项目中的改动。', { exact: true }).count()).toBe(0)
       await readmeHeading.waitFor()
       await compareOrRefreshGolden(EXPORTS_EN_EXPECTED, await captureStableAria(page, '[data-plugin-panel]', scaffold.workspaceCwd, {
         replacements: [[FIXTURE_PLUGINS, '{{fixtures}}']],

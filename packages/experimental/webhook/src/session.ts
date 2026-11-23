@@ -106,11 +106,15 @@ export async function createWebhookSession(
 
   const workspace = await ctx.workspaceRegistry.create(resolved.workspacePath)
   signal.throwIfAborted()
+  // `resolved.workspacePath` is validated as absolute above, and creating over a
+  // named directory always yields a primary root — so the working directory exists.
+  // oxlint-disable-next-line typescript/no-non-null-assertion -- create() with one absolute path always declares a root
+  const cwd = workspace.path!
   const sessionId = brandString<SessionId>(`webhook-${randomUUID()}`)
   const handle = await ctx.agents.create({
     sessionId,
     signal,
-    meta: { cwd: workspace.path, agentPreset: preset.id },
+    meta: { cwd, agentPreset: preset.id },
     agentOptions: resolved.agentOptions,
     setup: async (agentCtx) => {
       await ctx.agentPresets.mount(agentCtx, preset.id)

@@ -1,7 +1,7 @@
 - menu:
   - text: Group by
-  - menuitem "WorkSpace"
-  - menuitem "Workspace Tree"
+  - menuitem "Project"
+  - menuitem "Project Tree"
   - menuitem "In one list"
   - separator
   - text: Order by

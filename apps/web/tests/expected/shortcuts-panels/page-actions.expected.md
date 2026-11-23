@@ -19,7 +19,7 @@
 - text: {{cwd}}/workspace
 - button "Reload"
 - button "Search files" [expanded]
-- complementary "Workspace files":
+- complementary "Project files":
   - button "Search settings"
   - searchbox "Search files"
   - button "Show hidden entries"

@@ -152,6 +152,8 @@ export const VIEWER_ENDPOINT_CLASSES = {
   'workspace/initializeDefault': 'owner-only', // owner initializes the default Workspace
   'workspace/insertBefore': 'owner-only', // owner reorders Workspaces
   'workspace/insertSessionBefore': 'owner-only', // owner reorders Sessions
+  'workspace/addRoot': 'owner-only', // owner attaches a repository to a project
+  'workspace/removeRoot': 'owner-only', // owner detaches a repository from a project
   'workspace/pinSession': 'owner-only', // owner pins a Session
   'workspace/rename': 'owner-only', // owner renames a Workspace
   'workspace/unarchiveSession': 'owner-only', // owner unarchives a Session
@@ -225,6 +227,11 @@ export const VIEWER_ENDPOINT_CLASSES = {
   'permissionPresets/set': 'owner-only', // owner switches the sandbox and approval preset; a viewer may not call it at any tier
   'llm/discoverModels': 'owner-only', // owner discovers models
   'web/listProviders': 'owner-only', // owner web search and fetch settings
+  'yxspec/declaredArtifacts': 'owner-only', // owner YXSpec process panel; a viewer gets no ASPICE stage view
+  'yxspec/declaredArtifactsOf': 'owner-only', // owner YXSpec process panel; a viewer gets no ASPICE stage view
+  'yxspec/documents': 'owner-only', // owner YXSpec document picker; it enumerates the project's own tree
+  'yxspec/status': 'owner-only', // owner YXSpec process panel; a viewer gets no ASPICE stage view
+  'yxspecRemote/servers': 'owner-only', // owner build-server list; it names deployment hosts and recipes
   'agentPresets/list': 'owner-only', // owner agent presets
   'agentPresets/read': 'owner-only', // owner agent presets
   'agentPresets/select': 'owner-only', // owner agent presets

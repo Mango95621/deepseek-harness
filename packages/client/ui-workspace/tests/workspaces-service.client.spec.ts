@@ -57,6 +57,7 @@ function workspace(
 ): WorkspaceView {
   return {
     workspaceId: wid(id),
+    roots: [`/w/${id}`],
     path: `/w/${id}`,
     title: id,
     sessionIds,
@@ -197,6 +198,8 @@ class FakeWorkspaces implements IWorkspaces {
   }
 
   declare readonly create: IWorkspaces['create']
+  declare readonly addRoot: IWorkspaces['addRoot']
+  declare readonly removeRoot: IWorkspaces['removeRoot']
   declare readonly rename: IWorkspaces['rename']
   declare readonly delete: IWorkspaces['delete']
   declare readonly insertBefore: IWorkspaces['insertBefore']
@@ -433,6 +436,40 @@ describe('UiWorkspaceService', () => {
     expect(b.selectPanel).toHaveBeenCalledWith(null)
     expect(b.sessions.retain).toHaveBeenCalledWith(sid('target'), { source: 'mainView', facets: { conversation: true } })
     expect(b.sessions.refreshProjections).not.toHaveBeenCalled()
+  })
+
+  it('lands on the blank home, clearing the Session a reload would otherwise restore', () => {
+    const b = bench({ sessions: sessionState([summary('a'), summary('blank', { blank: true })]) })
+    b.uiWorkspace.openSession(sid('a'))
+    b.selectPanel.mockClear()
+    // The guided creation is the one flow that has to *stop* the operator somewhere rather than
+    // send them somewhere: it cannot open a Session for a project with no repository root, so it
+    // asks for the blank home and lets its own first step be what the operator sees.
+    b.uiWorkspace.openHome()
+    expect(b.selectPanel).toHaveBeenCalledWith(null)
+    // Nothing is retained for the move itself — it names no Session — and the saved selection is
+    // cleared with it, so a reload does not restore the Session that was current before and hide
+    // the walk behind a Conversation.
+    const retained = b.sessions.retain.mock.calls.length
+    b.uiWorkspace.openHome()
+    expect(b.sessions.retain.mock.calls).toHaveLength(retained)
+  })
+
+  it('withdraws a guided creation when the operator navigates to a Session instead', () => {
+    // The request is about a project that does not exist yet, and a Session selection is the
+    // operator choosing one that does — so the walk's own gate must stop opening.
+    const b = bench({ sessions: sessionState([summary('a')]) })
+    const guided = { begin: vi.fn(), cancel: vi.fn() }
+    b.ctx.provide('projectOnboarding', guided)
+    b.uiWorkspace.openSession(sid('a'))
+    expect(guided.cancel).toHaveBeenCalledOnce()
+  })
+
+  it('answers a deployment that installs no guide at all', () => {
+    // Withdrawing is unconditional: a host without the guide is fully functional, and asking it
+    // to remember whether a request was raised would make an optional feature a load requirement.
+    const b = bench({ sessions: sessionState([summary('a')]) })
+    expect(() => { b.uiWorkspace.openSession(sid('a')) }).not.toThrow()
   })
 
   it('keeps a left Session as a recent view until navigation returns to it or disposes', async () => {
@@ -1069,7 +1106,7 @@ describe('UiWorkspaceService', () => {
 
       b.uiWorkspace.startSession(undefined, { prompt: 'unsent' })
 
-      expect(b.notify).toHaveBeenCalledExactlyOnceWith({ kind: 'createFailed', message: 'Choose a workspace first.' })
+      expect(b.notify).toHaveBeenCalledExactlyOnceWith({ kind: 'createFailed', message: 'Choose a project first.' })
       expect(b.sessions.create).not.toHaveBeenCalled()
       expect(b.requestDraftInitialization).not.toHaveBeenCalled()
       expect(b.sessions.retained[0]!.release).not.toHaveBeenCalled()

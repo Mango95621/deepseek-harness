@@ -34,36 +34,6 @@ exports[`sidebar shell snapshots > renders Windows caption controls in expanded 
       </button>
     </div>
     <div
-      class="newSessionRow"
-    >
-      <div
-        data-slot="sidebar.session.action"
-        style="display: contents;"
-      >
-        <button
-          aria-label="New session"
-          class="newSession"
-          type="button"
-        >
-          <span
-            class="newSessionLabelMask"
-          >
-            <span
-              class="newSessionContent"
-            >
-              <svg
-                aria-hidden="true"
-                data-content="6e5e38f3"
-                data-icon="dsw-icon-new-chat-outline-regular"
-                height="16"
-                width="16"
-              />
-            </span>
-          </span>
-        </button>
-      </div>
-    </div>
-    <div
       class="scrollRegion"
     >
       <div
@@ -120,10 +90,8 @@ exports[`sidebar shell snapshots > renders Windows caption controls in expanded 
       class="logoRow"
       data-window-drag="true"
     >
-      <button
-        aria-label="New session"
+      <span
         class="brand wide"
-        type="button"
       >
         <span
           aria-hidden="true"
@@ -176,7 +144,7 @@ exports[`sidebar shell snapshots > renders Windows caption controls in expanded 
             </div>
           </span>
         </span>
-      </button>
+      </span>
       <button
         aria-label="Collapse sidebar"
         class="iconButton toggle"
@@ -192,41 +160,6 @@ exports[`sidebar shell snapshots > renders Windows caption controls in expanded 
           width="16"
         />
       </button>
-    </div>
-    <div
-      class="newSessionRow"
-    >
-      <div
-        data-slot="sidebar.session.action"
-        style="display: contents;"
-      >
-        <button
-          aria-label="New session"
-          class="newSession"
-          type="button"
-        >
-          <span
-            class="newSessionLabelMask"
-          >
-            <span
-              class="newSessionContent"
-            >
-              <svg
-                aria-hidden="true"
-                data-content="532cf99a"
-                data-icon="dsw-icon-new-chat-outline-medium"
-                height="14"
-                width="14"
-              />
-              <span
-                class="newSessionLabel wide"
-              >
-                New Session
-              </span>
-            </span>
-          </span>
-        </button>
-      </div>
     </div>
     <div
       class="scrollRegion"
@@ -325,36 +258,6 @@ exports[`sidebar shell snapshots > renders the collapsed rail after the crossfad
       </button>
     </div>
     <div
-      class="newSessionRow"
-    >
-      <div
-        data-slot="sidebar.session.action"
-        style="display: contents;"
-      >
-        <button
-          aria-label="New session"
-          class="newSession"
-          type="button"
-        >
-          <span
-            class="newSessionLabelMask"
-          >
-            <span
-              class="newSessionContent"
-            >
-              <svg
-                aria-hidden="true"
-                data-content="6e5e38f3"
-                data-icon="dsw-icon-new-chat-outline-regular"
-                height="18"
-                width="18"
-              />
-            </span>
-          </span>
-        </button>
-      </div>
-    </div>
-    <div
       class="scrollRegion"
     >
       <div
@@ -411,10 +314,8 @@ exports[`sidebar shell snapshots > renders the expanded column (wordmark, capsul
       class="logoRow"
       data-window-drag="true"
     >
-      <button
-        aria-label="New session"
+      <span
         class="brand wide"
-        type="button"
       >
         <span
           aria-hidden="true"
@@ -467,7 +368,7 @@ exports[`sidebar shell snapshots > renders the expanded column (wordmark, capsul
             </div>
           </span>
         </span>
-      </button>
+      </span>
       <button
         aria-label="Collapse sidebar"
         class="iconButton toggle"
@@ -483,41 +384,6 @@ exports[`sidebar shell snapshots > renders the expanded column (wordmark, capsul
           width="16"
         />
       </button>
-    </div>
-    <div
-      class="newSessionRow"
-    >
-      <div
-        data-slot="sidebar.session.action"
-        style="display: contents;"
-      >
-        <button
-          aria-label="New session"
-          class="newSession"
-          type="button"
-        >
-          <span
-            class="newSessionLabelMask"
-          >
-            <span
-              class="newSessionContent"
-            >
-              <svg
-                aria-hidden="true"
-                data-content="532cf99a"
-                data-icon="dsw-icon-new-chat-outline-medium"
-                height="14"
-                width="14"
-              />
-              <span
-                class="newSessionLabel wide"
-              >
-                New Session
-              </span>
-            </span>
-          </span>
-        </button>
-      </div>
     </div>
     <div
       class="scrollRegion"
@@ -577,10 +443,8 @@ exports[`sidebar shell snapshots > renders the expanded column in the default lo
       class="logoRow"
       data-window-drag="true"
     >
-      <button
-        aria-label="新建会话"
+      <span
         class="brand wide"
-        type="button"
       >
         <span
           aria-hidden="true"
@@ -633,7 +497,7 @@ exports[`sidebar shell snapshots > renders the expanded column in the default lo
             </div>
           </span>
         </span>
-      </button>
+      </span>
       <button
         aria-label="收起侧边栏"
         class="iconButton toggle"
@@ -649,41 +513,6 @@ exports[`sidebar shell snapshots > renders the expanded column in the default lo
           width="16"
         />
       </button>
-    </div>
-    <div
-      class="newSessionRow"
-    >
-      <div
-        data-slot="sidebar.session.action"
-        style="display: contents;"
-      >
-        <button
-          aria-label="新建会话"
-          class="newSession"
-          type="button"
-        >
-          <span
-            class="newSessionLabelMask"
-          >
-            <span
-              class="newSessionContent"
-            >
-              <svg
-                aria-hidden="true"
-                data-content="532cf99a"
-                data-icon="dsw-icon-new-chat-outline-medium"
-                height="14"
-                width="14"
-              />
-              <span
-                class="newSessionLabel wide"
-              >
-                新会话
-              </span>
-            </span>
-          </span>
-        </button>
-      </div>
     </div>
     <div
       class="scrollRegion"

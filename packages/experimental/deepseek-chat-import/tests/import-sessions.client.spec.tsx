@@ -24,7 +24,7 @@ function hook<T>(snapshot: T) {
 }
 
 const view = (id: string, title: string, sessionIds: SessionId[]) => ({
-  workspaceId: id as WorkspaceId, title, path: `/home/a/${title}`, sessionIds,
+  workspaceId: id as WorkspaceId, title, roots: [`/home/a/${title}`], path: `/home/a/${title}`, sessionIds,
   createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:00:00.000Z',
 })
 const workspaces: WorkspaceSnapshot = {
@@ -143,7 +143,7 @@ describe('ImportSessionsAction', () => {
     await act(async () => { pending.resolve({ ok: true, result: RESULT }) })
     expect(view.queryByRole('progressbar')).toBeNull()
     expect(view.getByRole('status').textContent).toBe([
-      'Imported 2 sessions into the project-two workspace.',
+      'Imported 2 sessions into the project-two project.',
       '1 older conversation exceeded the import limit and was not imported.',
       '1 conversation could not be imported.',
     ].join(''))
@@ -161,7 +161,7 @@ describe('ImportSessionsAction', () => {
     choose(view)
     await act(async () => { fireEvent.click(view.getByRole('button', { name: 'Import' })) })
     expect(view.getByRole('status').textContent).toBe([
-      'Imported 1 session into the project-one workspace.',
+      'Imported 1 session into the project-one project.',
       '2 older conversations exceeded the import limit and were not imported.',
       '2 conversations could not be imported.',
     ].join(''))
@@ -200,13 +200,13 @@ describe('ImportSessionsAction', () => {
     expect(picker().open).toBe(false)
     choose(view)
     await act(async () => { fireEvent.click(view.getByRole('button', { name: 'Import' })) })
-    expect(view.getByRole('status').textContent).toBe('Imported 2 sessions into the project-one workspace.')
+    expect(view.getByRole('status').textContent).toBe('Imported 2 sessions into the project-one project.')
   })
 
   it('starts without a workspace when the current Session belongs to none', () => {
     const { view, picker } = bench({ current: 'loose' })
     open(view)
-    expect(view.getByRole('button', { name: /Choose workspace/ })).toBeTruthy()
+    expect(view.getByRole('button', { name: /Choose project/ })).toBeTruthy()
     expect(picker().selectedId).toBeUndefined()
     choose(view)
     expect(view.getByRole('button', { name: 'Import' })).toHaveProperty('disabled', true)
@@ -233,7 +233,7 @@ describe('ImportSessionsAction', () => {
     [{ reason: 'missing-index' }, 'This is not a DeepSeek export: chat_session_index.json is missing or unreadable.'],
     [{ reason: 'unsupported-version' }, 'This export format version is not supported.'],
     [{ reason: 'no-conversations' }, 'The export contains no conversations that can be imported.'],
-    [{ reason: 'workspace-not-found' }, 'The chosen workspace no longer exists. Choose another one.'],
+    [{ reason: 'workspace-not-found' }, 'The chosen project no longer exists. Choose another one.'],
     [{ reason: 'busy' }, 'Another import is running. Try again later.'],
     [{ reason: 'upload-failed' }, 'Upload failed: gateway closed'],
     [{ reason: 'unknown' }, 'Import failed: gateway closed'],

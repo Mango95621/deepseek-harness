@@ -340,7 +340,7 @@ export interface Config {
 ## `@deepseek-ai/dsh-api-workspace-controller`
 
 - `inject`: `remoteAccess` · `typert` · `workspaceRegistry`
-- `source`: [`packages/api/workspace-controller/src/index.ts:37`](../packages/api/workspace-controller/src/index.ts)
+- `source`: [`packages/api/workspace-controller/src/index.ts:39`](../packages/api/workspace-controller/src/index.ts)
 
 ```ts config-catalog
 /** First-use directory policy for the Host account. */
@@ -5295,6 +5295,235 @@ export interface Config {
 ```
 <!-- END GENERATED config-catalog:@deepseek-ai/dsh-workspace-changes -->
 
+<!-- BEGIN GENERATED config-catalog:@deepseek-ai/dsh-yxspec -->
+<a id="deepseek-aidsh-yxspec"></a>
+
+## `@deepseek-ai/dsh-yxspec`
+
+- `source`: [`packages/yxspec/yxspec/src/index.ts:44`](../packages/yxspec/yxspec/src/index.ts)
+
+```ts config-catalog
+/** Plugin configuration: every deployment-specific constant lives here. */
+export interface Config {
+  /** Workspace root the flow operates in. Resolved against cwd when relative. */
+  workspaceRoot?: string
+  /** The spec identity to report. */
+  identity?: Partial<YxspecSpecIdentity>
+  /**
+   * Path to the dual-track map, workspace-relative. Read on `snapshot()`; a missing file
+   * yields an empty domain list rather than a failure, so a workspace without SWE.1 yet
+   * still resolves its stage model.
+   */
+  trackMapPath?: string
+  /**
+   * Path to the project's `yxspec.json`, workspace-relative. When present its identity
+   * fields seed {@link Config.identity}, so the deployment reads the project's own config
+   * instead of restating it. An explicit `identity` key wins over the file.
+   */
+  projectConfigPath?: string
+  /**
+   * The declared stage model. An empty or absent list falls back to
+   * {@link DEFAULT_STAGES}, which mirrors the SWE.1–SWE.5 stages the shipped skills
+   * implement.
+   */
+  stages?: YxspecStage[]
+}
+
+/** Identity of the spec being produced. */
+export interface YxspecSpecIdentity {
+  /** The spec id (e.g. `qr-yf-v103-2026`). */
+  readonly specId: string
+  /** The human project name. */
+  readonly projectName: string
+  /** The customer. */
+  readonly customer: string
+  /** The product type token (e.g. `ivi`). */
+  readonly productType: string
+}
+
+/**
+ * One ASPICE stage definition, as declared by the deployment. YXSpec's stage model is
+ * project configuration — the immutable part is the ASPICE process identity, which this
+ * record names.
+ */
+export interface YxspecStage {
+  /** Short kebab-case stage id (the skill suffix, e.g. `swe-arch`). */
+  readonly id: string
+  /** The Chinese display name used across the toolchain. */
+  readonly title: string
+  /** The ASPICE process this stage realizes (e.g. `SWE.2`). */
+  readonly aspice: string
+  /** The worktable group that owns this stage (e.g. `design`). */
+  readonly group: string
+  /** The ordered step ids this stage decomposes into. */
+  readonly steps: readonly YxspecStep[]
+}
+
+/** One numbered step inside a stage. */
+export interface YxspecStep {
+  /** Step id within the stage (e.g. `freeze`). */
+  readonly id: string
+  /** The numbered cell file backing this step (e.g. `03-freeze.md`). */
+  readonly cell: string
+  /** Short human label. */
+  readonly title: string
+  /**
+   * Whether this step is a frozen ❄ point that MUST be confirmed in the main
+   * session by a human. The seam enforces this; the cell only documents it.
+   */
+  readonly frozen: boolean
+  /**
+   * Workspace-relative artifacts that must already exist before this step may run.
+   * An empty list means the step has no declared input gate.
+   */
+  readonly requiredInputs: readonly string[]
+  /** Optional deterministic gate script, workspace-relative. */
+  readonly gateScript?: string
+}
+```
+<!-- END GENERATED config-catalog:@deepseek-ai/dsh-yxspec -->
+
+<!-- BEGIN GENERATED config-catalog:@deepseek-ai/dsh-yxspec-artifact -->
+<a id="deepseek-aidsh-yxspec-artifact"></a>
+
+## `@deepseek-ai/dsh-yxspec-artifact`
+
+- `inject`: `yxspec`
+- `source`: [`packages/yxspec/yxspec-artifact/src/index.ts:21`](../packages/yxspec/yxspec-artifact/src/index.ts)
+
+```ts config-catalog
+/** Plugin configuration. */
+export interface Config {
+  /**
+   * Emission interval for the `yxspec/artifact-write` observation event, in milliseconds.
+   * Zero disables emission; the ledger still answers queries.
+   */
+  emitIntervalMs?: number
+}
+```
+<!-- END GENERATED config-catalog:@deepseek-ai/dsh-yxspec-artifact -->
+
+<!-- BEGIN GENERATED config-catalog:@deepseek-ai/dsh-yxspec-dispatch -->
+<a id="deepseek-aidsh-yxspec-dispatch"></a>
+
+## `@deepseek-ai/dsh-yxspec-dispatch`
+
+- `inject`: `yxspec`
+- `source`: [`packages/yxspec/yxspec-dispatch/src/index.ts:27`](../packages/yxspec/yxspec-dispatch/src/index.ts)
+
+```ts config-catalog
+/** Plugin configuration. */
+export interface Config {
+  /** Where rendered role prompts land, workspace-relative. */
+  spawnDir?: string
+  /** Where role prompt templates are read from, workspace-relative. */
+  promptDir?: string
+}
+```
+<!-- END GENERATED config-catalog:@deepseek-ai/dsh-yxspec-dispatch -->
+
+<!-- BEGIN GENERATED config-catalog:@deepseek-ai/dsh-yxspec-freeze -->
+<a id="deepseek-aidsh-yxspec-freeze"></a>
+
+## `@deepseek-ai/dsh-yxspec-freeze`
+
+- `inject`: `tools` · `yxspec` · `approval`
+- `source`: [`packages/yxspec/yxspec-freeze/src/index.ts:23`](../packages/yxspec/yxspec-freeze/src/index.ts)
+
+```ts config-catalog
+/** Plugin configuration. */
+export interface Config {
+  /**
+   * Tools that constitute "working a frozen step" and must therefore be confirmed. Defaults
+   * to the writing family plus the shell, since a frozen step's sign-off covers both the
+   * artifact it produces and the commands that produce it.
+   */
+  guardedTools?: string[]
+  /** Whether the freeze hook is active. Disabling it reverts to prose-only enforcement. */
+  enabled?: boolean
+}
+```
+<!-- END GENERATED config-catalog:@deepseek-ai/dsh-yxspec-freeze -->
+
+<!-- BEGIN GENERATED config-catalog:@deepseek-ai/dsh-yxspec-gate -->
+<a id="deepseek-aidsh-yxspec-gate"></a>
+
+## `@deepseek-ai/dsh-yxspec-gate`
+
+- `inject`: `tools` · `yxspec` · `yxspecArtifacts`
+- `source`: [`packages/yxspec/yxspec-gate/src/index.ts:31`](../packages/yxspec/yxspec-gate/src/index.ts)
+
+```ts config-catalog
+/** Plugin configuration. */
+export interface Config {
+  /**
+   * Tools whose calls may write files and therefore must pass the frozen-artifact check.
+   * Defaults to the write/edit family; a deployment with a custom writer adds its name.
+   */
+  writeTools?: string[]
+  /**
+   * Whether to execute a step's `gateScript` in addition to the structural checks.
+   * Disabled by default so a workspace with no Python available still gates correctly on
+   * artifact existence.
+   */
+  runGateScripts?: boolean
+  /** Timeout for a gate-script invocation, in milliseconds. */
+  gateTimeoutMs?: number
+}
+```
+<!-- END GENERATED config-catalog:@deepseek-ai/dsh-yxspec-gate -->
+
+<!-- BEGIN GENERATED config-catalog:@deepseek-ai/dsh-yxspec-remote -->
+<a id="deepseek-aidsh-yxspec-remote"></a>
+
+## `@deepseek-ai/dsh-yxspec-remote`
+
+- `inject`: `subprocess` · `workspaceRegistry` · `storageDomain`
+- `source`: [`packages/yxspec/yxspec-remote/src/index.ts:69`](../packages/yxspec/yxspec-remote/src/index.ts)
+
+```ts config-catalog
+/** Plugin configuration. */
+export interface Config {
+  /**
+   * Exclusions applied when archiving a project tree. Build output is the bulk
+   * of an automotive tree and none of it is an input to a clean build, so the
+   * defaults are the usual suspects; a deployment extends rather than replaces.
+   */
+  excludes?: string[]
+  /**
+   * Whether to push the source tree. Disabling it turns every run into
+   * "execute against whatever is already there", which is how a deployment with
+   * a pre-synced tree (or a server-side checkout) avoids re-uploading.
+   */
+  pushSource?: boolean
+  /** Absolute local `tar` to use; the platform default is probed when absent. */
+  tarExecutable?: string
+  /** Output budget for a run's log, in bytes. */
+  logMaxBytes?: number
+}
+```
+<!-- END GENERATED config-catalog:@deepseek-ai/dsh-yxspec-remote -->
+
+<!-- BEGIN GENERATED config-catalog:@deepseek-ai/dsh-yxspec-step -->
+<a id="deepseek-aidsh-yxspec-step"></a>
+
+## `@deepseek-ai/dsh-yxspec-step`
+
+- `inject`: `tools` · `yxspec` · `yxspecArtifacts` · `workingDirectory` · `workspaceRegistry`
+- `source`: [`packages/yxspec/yxspec-step/src/index.ts:30`](../packages/yxspec/yxspec-step/src/index.ts)
+
+```ts config-catalog
+/** Plugin configuration. */
+export interface Config {
+  /**
+   * The stage the driver starts on when a call omits one. Absent means the driver starts at
+   * the first declared stage.
+   */
+  defaultStage?: string
+}
+```
+<!-- END GENERATED config-catalog:@deepseek-ai/dsh-yxspec-step -->
+
 ## 无配置的可加载插件
 
 这些插件通过 `cordis.yml` 中不含 `config:` 块的条目加载；它们未声明任何配置接口。
@@ -5372,6 +5601,7 @@ export interface Config {
 | `@deepseek-ai/dsh-client-ui-user-questions` | — | [`packages/client/ui-user-questions/src/index.ts`](../packages/client/ui-user-questions/src/index.ts) |
 | `@deepseek-ai/dsh-client-ui-workflow-run` | — | [`packages/client/ui-workflow-run/src/index.ts`](../packages/client/ui-workflow-run/src/index.ts) |
 | `@deepseek-ai/dsh-client-ui-workspace` | — | [`packages/client/ui-workspace/src/index.ts`](../packages/client/ui-workspace/src/index.ts) |
+| `@deepseek-ai/dsh-client-ui-yxspec` | — | [`packages/client/ui-yxspec/src/index.ts`](../packages/client/ui-yxspec/src/index.ts) |
 | `@deepseek-ai/dsh-command-compact` | `commands` · `compaction` | [`packages/compaction/command-compact/src/index.ts`](../packages/compaction/command-compact/src/index.ts) |
 | `@deepseek-ai/dsh-command-feedback` | `commands` | [`packages/feedback/command-feedback/src/index.ts`](../packages/feedback/command-feedback/src/index.ts) |
 | `@deepseek-ai/dsh-command-goal` | `commands` · `goals` | [`packages/goal/command-goal/src/index.ts`](../packages/goal/command-goal/src/index.ts) |
@@ -5427,6 +5657,7 @@ export interface Config {
 | `@deepseek-ai/dsh-user-questions` | — | [`packages/interaction/user-questions/src/index.ts`](../packages/interaction/user-questions/src/index.ts) |
 | `@deepseek-ai/dsh-webhook` | `agents` · `agentDefaultModel` · `agentPresets` · `permissionPresets` · `sessionTitle` · `workspaceRegistry` | [`packages/experimental/webhook/src/index.ts`](../packages/experimental/webhook/src/index.ts) |
 | `@deepseek-ai/dsh-workspace` | `storageDomain` · `sessionPersistence` | [`packages/workspace/workspace/src/index.ts`](../packages/workspace/workspace/src/index.ts) |
+| `@deepseek-ai/dsh-yxspec-api` | — | [`packages/yxspec/yxspec-api/src/index.ts`](../packages/yxspec/yxspec-api/src/index.ts) |
 <!-- END GENERATED config-catalog:no-config -->
 
 ## Seam 包（不可直接加载）

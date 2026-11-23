@@ -98,6 +98,28 @@ async function measureRowActions(row: Locator) {
   })
 }
 
+/**
+ * The sidebar's inline paint box: the column's inline padding plus the shared
+ * paint inset the shell's own row-level surfaces carry.
+ *
+ * Every full-width surface in the sidebar — the workspace section header, the
+ * project rows, and the (now removed) New Session bar — aligns to this box, so
+ * it is what their geometry is measured against. Derived from the tokens rather
+ * than a literal so a spacing change cannot silently pass.
+ * @param page - the page under test.
+ * @returns the box's left edge and width, in viewport coordinates.
+ */
+async function sidebarPaintBox(page: Page): Promise<{ x: number; width: number }> {
+  return await page.locator('[data-slot="sidebar"]').evaluate((anchor) => {
+    const root = anchor.firstElementChild as HTMLElement
+    const style = getComputedStyle(root)
+    const inset = Number.parseFloat(style.paddingInlineStart)
+      + Number.parseFloat(style.getPropertyValue('--dsh-sidebar-paint-inset')) + 1
+    const rect = root.getBoundingClientRect()
+    return { x: rect.x + inset, width: rect.width - inset * 2 }
+  })
+}
+
 describe('web e2e: sidebar search alignment and row action targets', () => {
   const workspaceTitle = 'Sidebar geometry workspace'
   const sessionTitle = 'Sidebar geometry session'
@@ -143,34 +165,32 @@ describe('web e2e: sidebar search alignment and row action targets', () => {
     try { await browser?.close() } finally { await scaffold?.close() }
   })
 
-  it('aligns the 32px expanded search with both edges of New session', async () => {
+  it('aligns the 32px expanded search with both edges of the sidebar paint box', async () => {
     onTestFailed(() => saveFailureShot(page, 'web-e2e-sidebar-search-alignment'))
     const searchButton = page.getByRole('button', { name: 'Search sessions', exact: true })
     const input = page.getByPlaceholder('Search session names', { exact: true })
     const search = input.locator('..')
-    const newSession = page.locator('button[class*="newSession"]')
     const measure = async () => {
       const searchBox = await search.boundingBox()
-      const newSessionBox = await newSession.boundingBox()
-      if (searchBox === null || newSessionBox === null) throw new Error('sidebar controls have no layout box')
+      const reference = await sidebarPaintBox(page)
+      if (searchBox === null) throw new Error('sidebar controls have no layout box')
       return {
         height: searchBox.height,
-        leftOffset: searchBox.x - newSessionBox.x,
-        rightOffset: searchBox.x + searchBox.width - newSessionBox.x - newSessionBox.width,
+        leftOffset: searchBox.x - reference.x,
+        rightOffset: searchBox.x + searchBox.width - reference.x - reference.width,
       }
     }
     for (const dark of [false, true]) {
       await page.evaluate(dark => document.body.toggleAttribute('data-ds-dark-theme', dark), dark)
       await expect.poll(async () => {
-        const reference = await newSession.boundingBox()
-        if (reference === null) throw new Error('New session has no layout box')
-        const controls = [searchButton, page.getByRole('button', { name: 'View options', exact: true }), page.getByRole('button', { name: 'Add workspace', exact: true })]
+        const reference = await sidebarPaintBox(page)
+        const controls = [searchButton, page.getByRole('button', { name: 'View options', exact: true }), page.getByRole('button', { name: 'Add project', exact: true })]
         const boxes = await Promise.all(controls.map(control => control.boundingBox()))
         return boxes.map(box => box === null ? null : box.x + box.width - reference.x - reference.width)
       }).toEqual(Object.values(HEADER_ACTION_RIGHT_OFFSETS))
       const labelBox = await page.locator('[class*="sectionHeader"] [class*="sectionLabel"]').boundingBox()
-      const referenceBox = await newSession.boundingBox()
-      if (labelBox === null || referenceBox === null) throw new Error('Sidebar heading has no layout box')
+      const referenceBox = await sidebarPaintBox(page)
+      if (labelBox === null) throw new Error('Sidebar heading has no layout box')
       expect(labelBox.x - referenceBox.x).toBe(HEADER_LABEL_OFFSET)
       await searchButton.click()
       await expect.poll(() => searchButton.getAttribute('aria-expanded')).toBe('true')
@@ -183,7 +203,7 @@ describe('web e2e: sidebar search alignment and row action targets', () => {
     expect(tripwire.warnings).toEqual([])
   })
 
-  it.each(['Search sessions', 'View options', 'Add workspace'])('keeps the %s tooltip visible across its full bounds', async (name) => {
+  it.each(['Search sessions', 'View options', 'Add project'])('keeps the %s tooltip visible across its full bounds', async (name) => {
     onTestFailed(() => saveFailureShot(page, 'web-e2e-sidebar-toolbar-tooltip'))
     const trigger = page.getByRole('button', { name, exact: true })
     await trigger.hover()
@@ -214,7 +234,7 @@ describe('web e2e: sidebar search alignment and row action targets', () => {
         else element.setAttribute('style', originalStyle)
       }
     })
-    if (name === 'Add workspace') expect(bounds.outsideSidebar).toBe(true)
+    if (name === 'Add project') expect(bounds.outsideSidebar).toBe(true)
     expect(bounds.hits).toEqual([true, true, true, true])
     await page.mouse.move(1000, 400)
     await tooltip.waitFor({ state: 'detached' })
@@ -304,7 +324,7 @@ describe('web e2e: sidebar search alignment and row action targets', () => {
     }
     await page.getByRole('button', { name: 'Collapse sidebar', exact: true }).click()
     await expect.poll(() => page.getByRole('button', { name: 'Account menu', exact: true }).getAttribute('data-collapsed')).toBe('true')
-    const add = page.getByRole('button', { name: 'Add workspace', exact: true })
+    const add = page.getByRole('button', { name: 'Add project', exact: true })
     const samples = await add.evaluate(async (button, entry) => {
       const header = button.closest<HTMLElement>('[class*="sectionHeader"]')
       const root = header?.parentElement
@@ -352,7 +372,7 @@ describe('web e2e: sidebar search alignment and row action targets', () => {
       return {
         first, last: measure(), headerTransitions,
         sameHeader: root.querySelector('[class*="sectionHeader"]') === header,
-        sameAdd: root.querySelector('button[aria-label="Add workspace"]') === button,
+        sameAdd: root.querySelector('button[aria-label="Add project"]') === button,
       }
     }, entry)
     expect(samples.headerTransitions).toEqual([])
@@ -533,9 +553,26 @@ describe('web e2e: sidebar search alignment and row action targets', () => {
       const measure = () => accountButton.evaluate((element) => {
         const button = element.getBoundingClientRect()
         const style = getComputedStyle(element)
-        const newSession = document.querySelector('button[class*="newSession"]')
-        if (newSession === null) throw new Error('New session reference is missing')
-        const reference = newSession.getBoundingClientRect()
+        // The reference is the sidebar's row-level inline box, derived from the
+        // tokens rather than a literal so a spacing change cannot silently pass.
+        // Expanded that box is the shared paint box: the inline padding plus the
+        // paint inset the retired New Session bar carried. The rail states the
+        // same row in its own geometry instead — a 36px control box at the
+        // padding edge — which the collapse toggle still occupies, so the rail
+        // measures against that live control and this geometry stays stated
+        // against a real row-level surface on both layouts.
+        const root = document.querySelector<HTMLElement>('[data-slot="sidebar"]')!.firstElementChild as HTMLElement
+        const rootStyle = getComputedStyle(root)
+        const railBox = Number.parseFloat(rootStyle.paddingInlineStart)
+          === Number.parseFloat(rootStyle.getPropertyValue('--dsh-sidebar-inline-padding'))
+          ? null
+          : root.querySelector<HTMLElement>('[data-sidebar-toggle]')?.getBoundingClientRect()
+        const rootRect = root.getBoundingClientRect()
+        const inset = Number.parseFloat(rootStyle.paddingInlineStart)
+          + Number.parseFloat(rootStyle.getPropertyValue('--dsh-sidebar-paint-inset')) + 1
+        const reference = railBox == null
+          ? { left: rootRect.x + inset, right: rootRect.right - inset }
+          : { left: railBox.left, right: railBox.right }
         const footer = element.closest('[class*="footArea"]')?.getBoundingClientRect()
         if (footer === undefined) throw new Error('Account footer is missing')
         return {
@@ -558,8 +595,11 @@ describe('web e2e: sidebar search alignment and row action targets', () => {
         const rect = await accountButton.boundingBox()
         return rect === null ? null : { width: rect.width, height: rect.height }
       }).toEqual({ width: 36, height: 36 })
-      await page.locator('button[class*="newSession"]').evaluate(async (element) => {
-        await Promise.all(element.getAnimations().map(animation => animation.finished))
+      // Settle the rail before measuring it: the collapse animation moves the
+      // whole column, so a sample mid-flight would read the slide, not the rail.
+      await page.locator('[data-slot="sidebar"]').evaluate(async (anchor) => {
+        await Promise.all((anchor.firstElementChild as HTMLElement)
+          .getAnimations({ subtree: true }).map(animation => animation.finished))
       })
       const rail = await measure()
       expect(rail.footerCenterOffset).toBe(0)
@@ -583,7 +623,7 @@ describe('web e2e: sidebar search alignment and row action targets', () => {
     await row.hover()
     const labels = kind === 'session'
       ? [`Session actions for ${sessionTitle}`, 'Archive session', 'Pin session'] as const
-      : [`Workspace actions for ${workspaceTitle}`, `New session in ${workspaceTitle}`] as const
+      : [`Project actions for ${workspaceTitle}`, `New session in ${workspaceTitle}`] as const
     await row.getByRole('button', { name: labels[0], exact: true }).waitFor()
     const metrics = await measureRowActions(row)
     expect(await row.boundingBox()).toEqual(restingBox)

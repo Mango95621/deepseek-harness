@@ -1,0 +1,76 @@
+# Bilingual-pair consistency record for README.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write packages/yxspec/yxspec-remote/README.md
+/:
+  en: 92e3b79a6fc0f97d
+  zh: f6be1c5396494724
+/deepseek-ai-dsh-yxspec-remote:
+  en: 42f910576ffcea55
+  zh: c74222204876d415
+/deepseek-ai-dsh-yxspec-remote/summary:
+  en: 541331df4c564126
+  zh: 20521fa79e60ee98
+/deepseek-ai-dsh-yxspec-remote/table-of-contents:
+  en: d152484eb41ac6b4
+  zh: 09388d293f9be9cb
+/deepseek-ai-dsh-yxspec-remote/use-this-package:
+  en: 1ed5960050f6c735
+  zh: 06282568128bcf51
+/deepseek-ai-dsh-yxspec-remote/use-this-package/when-to-choose-it:
+  en: 9bc82196b8a4e69f
+  zh: 67b1c4b99e50de28
+/deepseek-ai-dsh-yxspec-remote/use-this-package/minimal-configuration:
+  en: 6fcab202ec50bace
+  zh: 64bfd31459f225e1
+/deepseek-ai-dsh-yxspec-remote/use-this-package/declaring-a-server:
+  en: 54473586c22a2182
+  zh: 66773b077f7664fd
+/deepseek-ai-dsh-yxspec-remote/understand-the-implementation:
+  en: 8d3e2b2263c89516
+  zh: de93a4fe52ba5e09
+/deepseek-ai-dsh-yxspec-remote/understand-the-implementation/source-map:
+  en: af5865ca2b352732
+  zh: 42b1c09747551efd
+/deepseek-ai-dsh-yxspec-remote/further-exploration:
+  en: 360be65d4d55493b
+  zh: a2dbc61fbf978114
+/deepseek-ai-dsh-yxspec-remote/model-experience:
+  en: 215e7ba838619b7b
+  zh: a311da3843709f90
+/deepseek-ai-dsh-yxspec-remote/model-experience/build-server-tools:
+  en: 87d58294c20316f5
+  zh: a1b0986ff2bbce06
+/deepseek-ai-dsh-yxspec-remote/model-experience/build-server-tools/what-the-model-sees:
+  en: a6a13f8cd5e05105
+  zh: fe70f2c12e01e603
+/deepseek-ai-dsh-yxspec-remote/model-experience/build-server-tools/what-the-model-sees/successful-run-result:
+  en: 81933a0f84d1e144
+  zh: 8e2e6007bd9efe9a
+/deepseek-ai-dsh-yxspec-remote/model-experience/build-server-tools/token-effect:
+  en: 9ec6b50b5bc176e1
+  zh: e353c817c3c1987e
+/deepseek-ai-dsh-yxspec-remote/model-experience/build-server-tools/kv-cache-effect:
+  en: 6904527d7d6d9b25
+  zh: 81e49c15d8f4d960
+/deepseek-ai-dsh-yxspec-remote/model-experience/declared-server-declaration-tool:
+  en: 2928652c4dc255ac
+  zh: 11be05c337a6616f
+/deepseek-ai-dsh-yxspec-remote/model-experience/declared-server-declaration-tool/what-the-model-sees:
+  en: 3839fa4c45bc1601
+  zh: d1109ac5db17b8d6
+/deepseek-ai-dsh-yxspec-remote/model-experience/declared-server-declaration-tool/what-the-model-sees/declaration-confirmation:
+  en: 584f45d671e80b6c
+  zh: 3c2a879f25d478b7
+/deepseek-ai-dsh-yxspec-remote/model-experience/declared-server-declaration-tool/token-effect:
+  en: 0ef2dd644c9d7531
+  zh: a1a918f100c11691
+/deepseek-ai-dsh-yxspec-remote/model-experience/declared-server-declaration-tool/kv-cache-effect:
+  en: fb53dbc8c1e02abb
+  zh: d02531ac2f601e18
+/deepseek-ai-dsh-yxspec-remote/known-limitations-and-deferred-work:
+  en: e6e6c756fe19657a
+  zh: 07e37f9cff680404
+/deepseek-ai-dsh-yxspec-remote/known-limitations-and-deferred-work/dev-note:
+  en: e67f633dc6fe7773
+  zh: 3bb0c20c93f16f98

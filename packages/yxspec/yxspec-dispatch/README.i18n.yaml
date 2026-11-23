@@ -1,0 +1,76 @@
+# Bilingual-pair consistency record for README.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write packages/yxspec/yxspec-dispatch/README.md
+/:
+  en: 2459b789d037c500
+  zh: 24b576abf98092c9
+/deepseek-ai-dsh-yxspec-dispatch:
+  en: 6882699ba2a8ef07
+  zh: 1abef8b83293de37
+/deepseek-ai-dsh-yxspec-dispatch/summary:
+  en: a42a069a79f3d9dc
+  zh: c5b84ec1894be2aa
+/deepseek-ai-dsh-yxspec-dispatch/table-of-contents:
+  en: d152484eb41ac6b4
+  zh: 09388d293f9be9cb
+/deepseek-ai-dsh-yxspec-dispatch/use-this-package:
+  en: 6fd30cbea78bb8de
+  zh: ada6a53eb7120c1c
+/deepseek-ai-dsh-yxspec-dispatch/use-this-package/when-to-choose-it:
+  en: 51962473872a8b73
+  zh: 6979ce9bf60b429b
+/deepseek-ai-dsh-yxspec-dispatch/use-this-package/minimal-configuration:
+  en: 1d7e28ed5a7b6a0c
+  zh: 3d079f772f99bd3b
+/deepseek-ai-dsh-yxspec-dispatch/use-this-package/what-the-controller-holds:
+  en: 102b8439c97edea1
+  zh: 97106e7f5275f8c0
+/deepseek-ai-dsh-yxspec-dispatch/understand-the-implementation:
+  en: e1383cbf4104c081
+  zh: 20ae25cfe6e95a07
+/deepseek-ai-dsh-yxspec-dispatch/understand-the-implementation/source-map:
+  en: c9543e852415110b
+  zh: b183ccb7e3643b89
+/deepseek-ai-dsh-yxspec-dispatch/further-exploration:
+  en: 572ba6b641e101fb
+  zh: 44b4e37cda748753
+/deepseek-ai-dsh-yxspec-dispatch/model-experience:
+  en: 215e7ba838619b7b
+  zh: a311da3843709f90
+/deepseek-ai-dsh-yxspec-dispatch/model-experience/spawn-prompt:
+  en: 85b9ac8c03083544
+  zh: 9f8dccad12a46c50
+/deepseek-ai-dsh-yxspec-dispatch/model-experience/spawn-prompt/what-the-model-sees:
+  en: 4c8eb34d42d2d01a
+  zh: cb719d7fee28d02a
+/deepseek-ai-dsh-yxspec-dispatch/model-experience/spawn-prompt/what-the-model-sees/spawn-prompt-body:
+  en: e8319e633a5fdc09
+  zh: df14bebf8bb52456
+/deepseek-ai-dsh-yxspec-dispatch/model-experience/spawn-prompt/token-effect:
+  en: 46418348dd2575f8
+  zh: 8eda2f1ce9821f3b
+/deepseek-ai-dsh-yxspec-dispatch/model-experience/spawn-prompt/kv-cache-effect:
+  en: 38eb386434887204
+  zh: 0804f1a9f0240c3a
+/deepseek-ai-dsh-yxspec-dispatch/model-experience/render-diagnostic:
+  en: 141c78a2c3767922
+  zh: d0f279ada82c3f0b
+/deepseek-ai-dsh-yxspec-dispatch/model-experience/render-diagnostic/what-the-model-sees:
+  en: e13f31c91c50ac7a
+  zh: 6a766a4c58aa47e8
+/deepseek-ai-dsh-yxspec-dispatch/model-experience/render-diagnostic/what-the-model-sees/diagnostic-line:
+  en: 06083919612f3a18
+  zh: dd3fd46f2fb9945b
+/deepseek-ai-dsh-yxspec-dispatch/model-experience/render-diagnostic/token-effect:
+  en: 7b2ba8ba93d08e3a
+  zh: 0d2ee47b7994ae0f
+/deepseek-ai-dsh-yxspec-dispatch/model-experience/render-diagnostic/kv-cache-effect:
+  en: 6ab28ba7e34d574d
+  zh: b17845344a6f18e5
+/deepseek-ai-dsh-yxspec-dispatch/known-limitations-and-deferred-work:
+  en: 503aab2df3d22fc2
+  zh: 6420a238f93c10f1
+/deepseek-ai-dsh-yxspec-dispatch/known-limitations-and-deferred-work/dev-note:
+  en: e67f633dc6fe7773
+  zh: 3bb0c20c93f16f98

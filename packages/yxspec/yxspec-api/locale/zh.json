@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "YXSpec 远程接口",
+    "description": "以 yxspec 命名空间向桌面客户端暴露 ASPICE 阶段模型与阶段状态。"
+  }
+}

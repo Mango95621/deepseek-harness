@@ -1,0 +1,25 @@
+# Bilingual-pair consistency record for README.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write packages/yxspec/README.md
+/:
+  en: ba8be0d9640bbe2b
+  zh: 44275ab5494b31b8
+/yxspec-gated-aspice-r-d-flow:
+  en: 819a1cee1e865a05
+  zh: e58657af784b491f
+/yxspec-gated-aspice-r-d-flow/summary:
+  en: 763a0eb7c050403a
+  zh: 3655548bde3aff9a
+/yxspec-gated-aspice-r-d-flow/table-of-contents:
+  en: 1eb35b015a6c423f
+  zh: 1eb35b015a6c423f
+/yxspec-gated-aspice-r-d-flow/packages:
+  en: c7347272e56e3a5d
+  zh: d0860ea8bbfa567b
+/yxspec-gated-aspice-r-d-flow/related-documentation:
+  en: 608062412a621e75
+  zh: dff624bad9eb73ec
+/yxspec-gated-aspice-r-d-flow/dev-note:
+  en: b75c8458928b72b9
+  zh: b75c8458928b72b9

@@ -10,6 +10,7 @@ import { DirectoryPickerController } from './directory-picker.ts'
 import { WorkspaceFeed, workspaceView } from './feed.ts'
 import { defaultWorkspaceDirectory, validateDocumentsDirectory } from './default-directory.ts'
 import type {
+  WorkspaceAddRootRequest,
   WorkspaceArchiveSessionRequest,
   WorkspaceArchiveValue,
   WorkspaceBaseline,
@@ -24,6 +25,7 @@ import type {
   WorkspaceOrderValue,
   WorkspacePinSessionRequest,
   WorkspacePinValue,
+  WorkspaceRemoveRootRequest,
   WorkspaceRenameRequest,
   WorkspaceUnarchiveSessionRequest,
   WorkspaceUnpinSessionRequest,
@@ -83,13 +85,36 @@ export class WorkspaceController extends TypertRemoteService {
   }
 
   /**
-   * Create or idempotently resolve one Workspace over an existing directory.
-   * @param request - directory path to register.
-   * @returns the Workspace and whether this call created it.
+   * Create or idempotently resolve one project.
+   *
+   * Naming no directory creates a project from its title alone; its repositories
+   * are attached afterwards through {@link addRoot}.
+   * @param request - one directory path, the root list (primary first), or neither plus a title.
+   * @returns the project and whether this call created it.
    */
   @Remote('create')
   create(request: WorkspaceCreateRequest): Promise<WorkspaceCreateValue> {
     return this.commands.create(request)
+  }
+
+  /**
+   * Append a repository root to an existing project.
+   * @param request - project identity and the directory to append.
+   * @returns the updated project projection.
+   */
+  @Remote('addRoot')
+  addRoot(request: WorkspaceAddRootRequest): Promise<WorkspaceValue> {
+    return this.commands.addRoot(request)
+  }
+
+  /**
+   * Drop a repository root from a project.
+   * @param request - project identity and the directory to drop.
+   * @returns the updated project projection.
+   */
+  @Remote('removeRoot')
+  removeRoot(request: WorkspaceRemoveRootRequest): Promise<WorkspaceValue> {
+    return this.commands.removeRoot(request)
   }
 
   /**

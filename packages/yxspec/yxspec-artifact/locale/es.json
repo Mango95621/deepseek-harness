@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Registro de artefactos YXSpec",
+    "description": "Mantiene el registro de artefactos en disco que decide si un paso del flujo terminó."
+  }
+}

@@ -98,7 +98,7 @@ interface PluginFiber {
 
 const PRESETS = {
   'read-only': { sandbox: 'read-only', approval: 'ask', name: 'Read only' },
-  'workspace-write': { sandbox: 'workspace-write', approval: 'ask', name: 'Workspace write' },
+  'workspace-write': { sandbox: 'workspace-write', approval: 'ask', name: 'Project write' },
   'danger-full-access': { sandbox: 'danger-full-access', approval: 'never', name: 'Full access' },
 } satisfies NonNullable<PermissionConfig['presets']>
 

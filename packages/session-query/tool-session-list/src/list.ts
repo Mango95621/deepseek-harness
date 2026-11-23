@@ -23,7 +23,8 @@ export interface SessionListInput extends PageInput {
 interface WorkspaceListItem {
   workspace_id: WorkspaceId
   title: string
-  path: string
+  /** The primary root, or null while the project declares no repository root yet. */
+  path: string | null
   created_at: string
   updated_at: string
 }
@@ -70,7 +71,7 @@ export function listWorkspaces(ctx: Context, input: PageInput, signal: AbortSign
   return ctx.workspaceRegistry.list().slice(offset, offset + limit).map(workspace => ({
     workspace_id: workspace.id,
     title: workspace.title,
-    path: workspace.path,
+    path: workspace.path ?? null,
     created_at: workspace.createdAt,
     updated_at: workspace.updatedAt,
   }))

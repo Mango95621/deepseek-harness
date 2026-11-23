@@ -23,7 +23,10 @@ export function ProjectRow({
 }: ProjectRowProps): ReactNode {
   const current = useProjection('workingDirectory')
   const createdIn = useSessions(snapshot => snapshot.byId[sessionId]?.cwd)
-  const workspacePath = useWorkspaces(snapshot => snapshot.items.find(item => item.sessionIds.includes(sessionId))?.path)
+  // A project that declares no repository root yet contributes no directory; the
+  // `?? undefined` keeps this home's "unknown directory" case a single value.
+  const workspacePath = useWorkspaces(snapshot =>
+    snapshot.items.find(item => item.sessionIds.includes(sessionId))?.path ?? undefined)
   const home = useHost(facts => facts.home)
   const { getTriggerProps } = useContextMenu()
   const path = current ?? createdIn ?? workspacePath

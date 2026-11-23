@@ -14,6 +14,7 @@ import {
 import { RemoteError, remoteErrorOf } from '@deepseek-ai/dsh-typert-protocol'
 import { workspaceView } from './feed.ts'
 import type {
+  WorkspaceAddRootRequest,
   WorkspaceArchiveSessionRequest,
   WorkspaceArchiveValue,
   WorkspaceCreateRequest,
@@ -25,6 +26,7 @@ import type {
   WorkspaceOrderValue,
   WorkspacePinSessionRequest,
   WorkspacePinValue,
+  WorkspaceRemoveRootRequest,
   WorkspaceRenameRequest,
   WorkspaceUnarchiveSessionRequest,
   WorkspaceUnpinSessionRequest,
@@ -39,28 +41,104 @@ export class WorkspaceCommands {
   constructor(private readonly ctx: Context) {}
 
   /**
-   * Create or resolve one Workspace over an existing directory.
-   * @param request - directory path to register.
-   * @returns the Workspace and whether this call created it.
+   * Create or resolve one project.
+   *
+   * A request naming several roots creates a multi-repository project in one
+   * call. Reuse resolves on any declared root, so asking for a directory a
+   * project already covers returns that project rather than a second one.
+   *
+   * A request naming **no** directory creates a project from its name alone —
+   * the shape a client uses when it asks for the project first and attaches its
+   * repositories afterwards through {@link addRoot}. Such a project has no
+   * primary root, so no session can be attached to it until one root exists;
+   * that refusal comes from the registry, not from here.
+   * @param request - one directory, the root list (primary first), or neither plus a title.
+   * @returns the project and whether this call created it.
    */
   create(request: WorkspaceCreateRequest): Promise<WorkspaceCreateValue> {
+    const requested = request.roots ?? (request.path === undefined ? [] : [request.path])
+    const primary = requested[0]
+    const title = request.title?.trim()
+    const named = title === undefined || title === '' ? undefined : title
+    if (primary === undefined && named === undefined) {
+      return Promise.reject(new RemoteError(
+        'gateway/bad-request',
+        'creating a project requires a directory path, a non-empty roots list, or a title',
+        {},
+      ))
+    }
     return this.enqueue(async () => {
       try {
-        const existing = await this.ctx.workspaceRegistry.resolveByPath(request.path)
+        const existing = primary === undefined
+          ? undefined
+          : await this.ctx.workspaceRegistry.resolveByPath(primary)
         if (existing !== undefined) {
           return { workspace: workspaceView(existing), created: false }
         }
-        const workspace = await this.ctx.workspaceRegistry.create(request.path)
+        const workspace = await this.ctx.workspaceRegistry.create(requested, named)
         return { workspace: workspaceView(workspace), created: true }
       } catch (error) {
         if (remoteErrorOf(error) !== undefined) throw error
         throw new RemoteError(
           'workspace/invalid-path',
-          `cannot create a Workspace at "${request.path}": ${errorMessage(error)}`,
-          { path: request.path },
+          primary === undefined
+            ? `cannot create a project named "${named}": ${errorMessage(error)}`
+            : `cannot create a project at "${primary}": ${errorMessage(error)}`,
+          // The guard at the top of this method rejects the call that would
+          // leave both absent, so one of the two always names the request.
+          /* v8 ignore next -- guarded above: a path or a title is always present. */
+          { path: primary ?? named ?? '' },
           { cause: error },
         )
       }
+    })
+  }
+
+  /**
+   * Append a repository root to an existing project. The added root is never
+   * promoted to primary, so a project's working directory cannot change by
+   * accident.
+   * @param request - project identity and the directory to append.
+   * @returns the updated project projection.
+   */
+  addRoot(request: WorkspaceAddRootRequest): Promise<WorkspaceValue> {
+    return this.enqueue(async () => {
+      const workspace = this.requireWorkspace(request.workspaceId)
+      try {
+        await this.ctx.workspaceRegistry.addRoot(request.workspaceId, request.path)
+      } catch (error) {
+        throw new RemoteError(
+          'workspace/root-invalid',
+          `cannot add root "${request.path}" to project "${workspace.title}": ${errorMessage(error)}`,
+          { workspaceId: request.workspaceId, path: request.path },
+          { cause: error },
+        )
+      }
+      return { workspace: workspaceView(this.requireWorkspace(request.workspaceId)) }
+    })
+  }
+
+  /**
+   * Drop a repository root from a project. Removing the last root is allowed:
+   * the project then declares no repository and rejects session attachment
+   * until one is added back.
+   * @param request - project identity and the directory to drop.
+   * @returns the updated project projection.
+   */
+  removeRoot(request: WorkspaceRemoveRootRequest): Promise<WorkspaceValue> {
+    return this.enqueue(async () => {
+      const workspace = this.requireWorkspace(request.workspaceId)
+      try {
+        await this.ctx.workspaceRegistry.removeRoot(request.workspaceId, request.path)
+      } catch (error) {
+        throw new RemoteError(
+          'workspace/root-invalid',
+          `cannot remove root "${request.path}" from project "${workspace.title}": ${errorMessage(error)}`,
+          { workspaceId: request.workspaceId, path: request.path },
+          { cause: error },
+        )
+      }
+      return { workspace: workspaceView(this.requireWorkspace(request.workspaceId)) }
     })
   }
 

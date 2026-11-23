@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "YXSpec-Prozessfenster",
+    "description": "Zeigt das ASPICE-Stufenmodell und den Ankunftsstatus der Artefakte je Stufe aus dem Remote-Namensraum yxspec."
+  }
+}

@@ -1,0 +1,73 @@
+# Bilingual-pair consistency record for README.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write packages/yxspec/yxspec-step/README.md
+/:
+  en: 5975d4a58e8ef9c6
+  zh: a82e887a48e9a882
+/deepseek-ai-dsh-yxspec-step:
+  en: 7d56083931d0835f
+  zh: db5b60eb383bb1e9
+/deepseek-ai-dsh-yxspec-step/summary:
+  en: 98fa289d33067b5d
+  zh: 32f71f5c9b704b8c
+/deepseek-ai-dsh-yxspec-step/table-of-contents:
+  en: d152484eb41ac6b4
+  zh: 09388d293f9be9cb
+/deepseek-ai-dsh-yxspec-step/use-this-package:
+  en: 0daaf1fffd40c2df
+  zh: ffc858e5d432e0ed
+/deepseek-ai-dsh-yxspec-step/use-this-package/when-to-choose-it:
+  en: e2362bd5226b1e9d
+  zh: 31d942189d7a5a03
+/deepseek-ai-dsh-yxspec-step/use-this-package/minimal-configuration:
+  en: cfbd33db3411007e
+  zh: f1ee34cb3fe40d3f
+/deepseek-ai-dsh-yxspec-step/use-this-package/where-the-step-contract-comes-from:
+  en: e5c8899e8a9cc992
+  zh: d0397d3929360359
+/deepseek-ai-dsh-yxspec-step/understand-the-implementation:
+  en: 080f6c5f6e71de6c
+  zh: eb54882fa4643ef3
+/deepseek-ai-dsh-yxspec-step/understand-the-implementation/source-map:
+  en: 611a93e4a3641d0b
+  zh: ea7d8f6020876862
+/deepseek-ai-dsh-yxspec-step/further-exploration:
+  en: 07defdaf5c20e378
+  zh: 444e25b5f19130e3
+/deepseek-ai-dsh-yxspec-step/model-experience:
+  en: 215e7ba838619b7b
+  zh: a311da3843709f90
+/deepseek-ai-dsh-yxspec-step/model-experience/step-contract:
+  en: 7d0c156d28b34755
+  zh: 4a41939cab99dfbe
+/deepseek-ai-dsh-yxspec-step/model-experience/step-contract/what-the-model-sees:
+  en: cdd8873474ee1536
+  zh: ce2402117e136c7c
+/deepseek-ai-dsh-yxspec-step/model-experience/step-contract/token-effect:
+  en: 917d93534c1fe0e2
+  zh: bccc2e0932b793c7
+/deepseek-ai-dsh-yxspec-step/model-experience/step-contract/kv-cache-effect:
+  en: f40c7b9260707ae5
+  zh: 55d1b5a3c0b6a3d3
+/deepseek-ai-dsh-yxspec-step/model-experience/advance-refusal:
+  en: 9e8f594fa73bdd9f
+  zh: 5c0db89423266628
+/deepseek-ai-dsh-yxspec-step/model-experience/advance-refusal/what-the-model-sees:
+  en: 54de586faaa4b586
+  zh: 36cb36108d0c7063
+/deepseek-ai-dsh-yxspec-step/model-experience/advance-refusal/what-the-model-sees/missing-outputs-refusal:
+  en: 3191bf77998b17b7
+  zh: db6c95d4ffb85e40
+/deepseek-ai-dsh-yxspec-step/model-experience/advance-refusal/token-effect:
+  en: ea117aaee800c59c
+  zh: e66888b3e94e7da4
+/deepseek-ai-dsh-yxspec-step/model-experience/advance-refusal/kv-cache-effect:
+  en: 6eda28da5d792687
+  zh: 364813b33cc33934
+/deepseek-ai-dsh-yxspec-step/known-limitations-and-deferred-work:
+  en: eb10f39d1e33cb3b
+  zh: ee445e3883e50f15
+/deepseek-ai-dsh-yxspec-step/known-limitations-and-deferred-work/dev-note:
+  en: e67f633dc6fe7773
+  zh: 3bb0c20c93f16f98

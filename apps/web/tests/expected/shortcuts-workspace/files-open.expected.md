@@ -3,7 +3,7 @@
 - button "Search files"
 - button "Open in Finder"
 - button "More ways to open"
-- complementary "Workspace files":
+- complementary "Project files":
   - paragraph
   - list:
     - listitem: Empty directory

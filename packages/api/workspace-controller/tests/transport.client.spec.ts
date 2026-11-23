@@ -365,6 +365,10 @@ describe('WorkspaceController', () => {
     expect(client.ctx.workspaces.list).toBe(model)
     await expect(controller.initializeDefault(new AbortController().signal)).resolves.toMatchObject({ workspaceId: 'default' })
     await expect(controller.create({ path: '/work/created' })).resolves.toMatchObject({ workspaceId: 'created' })
+    await expect(controller.addRoot(wid('one'), '/work/extra')).resolves.toMatchObject({
+      roots: ['/work/one', '/work/extra'],
+    })
+    await expect(controller.removeRoot(wid('one'), '/work/one')).resolves.toMatchObject({ roots: [] })
     await expect(controller.rename(wid('one'), 'renamed')).resolves.toMatchObject({ title: 'renamed' })
     await expect(controller.insertBefore(wid('one'))).resolves.toBeUndefined()
     await expect(controller.insertSessionBefore(wid('one'), sid('session'))).resolves.toMatchObject({
@@ -377,6 +381,8 @@ describe('WorkspaceController', () => {
     await expect(controller.delete(wid('one'))).resolves.toBeUndefined()
     // Each command crosses the wire as one positional request object.
     expect(mock.log.requests('workspace/create')).toEqual([{ path: '/work/created' }])
+    expect(mock.log.requests('workspace/addRoot')).toEqual([{ workspaceId: 'one', path: '/work/extra' }])
+    expect(mock.log.requests('workspace/removeRoot')).toEqual([{ workspaceId: 'one', path: '/work/one' }])
     expect(mock.log.requests('workspace/rename')).toEqual([{ workspaceId: 'one', title: 'renamed' }])
     expect(mock.log.requests('workspace/insertBefore')).toEqual([{ workspaceId: 'one' }])
     expect(mock.log.requests('workspace/insertSessionBefore')).toEqual([{ workspaceId: 'one', sessionId: 'session' }])
@@ -404,6 +410,18 @@ describe('WorkspaceController', () => {
 
     mock.remote.workspace.rename.mockResolvedValueOnce(err(missingWorkspace))
     await expect(controller.rename(wid('missing'), 'name')).rejects.toThrow('workspace rename failed: workspace/not-found: gone')
+    // Root commands have no dedicated error type: they surface as the plain
+    // command failure naming the operation that was refused.
+    mock.remote.workspace.addRoot.mockResolvedValueOnce(err(new RemoteError(
+      'workspace/root-invalid', 'not a directory', { workspaceId: wid('one'), path: '/work/file.txt' },
+    )))
+    await expect(controller.addRoot(wid('one'), '/work/file.txt'))
+      .rejects.toThrow('workspace root add failed: workspace/root-invalid: not a directory')
+    mock.remote.workspace.removeRoot.mockResolvedValueOnce(err(new RemoteError(
+      'workspace/root-invalid', 'storage down', { workspaceId: wid('one'), path: '/work/one' },
+    )))
+    await expect(controller.removeRoot(wid('one'), '/work/one'))
+      .rejects.toThrow('workspace root remove failed: workspace/root-invalid: storage down')
     mock.remote.workspace.delete.mockResolvedValueOnce(err(missingWorkspace))
     await expect(controller.delete(wid('missing'))).rejects.toThrow('workspace delete failed: workspace/not-found: gone')
     mock.remote.workspace.insertBefore.mockResolvedValueOnce(err(missingWorkspace))

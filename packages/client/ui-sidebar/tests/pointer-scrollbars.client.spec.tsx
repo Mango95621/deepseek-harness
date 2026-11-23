@@ -45,10 +45,11 @@ function mountColumn(): { column: HTMLElement; quiet: () => boolean } {
       useSessions={neverHook} useSessionStatus={useSessionStatus} useSessionRetainInfo={neverHook}
       usePanelInfo={usePanelInfo} selectPanel={() => {}} usePanels={selector => selector([])} useEntryPins={selector => selector([])}
       useEntryActions={selector => selector(false)} setPinned={vi.fn()}
+      useSessionActions={selector => selector(false)}
       useShortcuts={selector => selector([])}
       useContextMenu={contextMenuHook()} useResource={useResource} useWorkspaces={neverHook}
       {...allowAllAccess}
-      startSession={vi.fn()} toggleSidebar={vi.fn()} trackEntryClick={vi.fn()} t={t}
+      toggleSidebar={vi.fn()} trackEntryClick={vi.fn()} t={t}
       renderFactorySlot={() => null}
       renderSlot={((_key: string, owner: SidebarSectionOwnerProps) =>
         <div data-testid="region" data-wide={owner.wide} />) as SidebarRootComponentProps['renderSlot']}

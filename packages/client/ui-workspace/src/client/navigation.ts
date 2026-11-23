@@ -116,6 +116,19 @@ export interface UiWorkspace {
    */
   unpinSession(sessionId: SessionId): Promise<void>
   /**
+   * Clear the main selection, landing on the blank home with no Session shown.
+   *
+   * Ordinary navigation always names a Session to reveal; this is the one move that names
+   * none, and it exists for flows that have to *stop* the operator somewhere rather than send
+   * them somewhere. A guided creation is the case that needs it: the flow that creates the
+   * project cannot open a Session for it (a project with no repository root has none), so the
+   * flow asks for the blank home and lets its own first step be what the operator sees.
+   *
+   * The saved selection is cleared with it, so a reload does not immediately undo the move by
+   * restoring the Session that was current before.
+   */
+  openHome(): void
+  /**
    * Open the Host-native directory picker.
    * @returns the selected directory, or null when cancelled.
    */
@@ -147,10 +160,54 @@ export interface UiWorkspace {
   whenAccess(workspaceId: WorkspaceId, action: RemoteEndpoint, callback: () => AccessEffect): () => void
 }
 
+/**
+ * A guided project-creation flow that can claim the "add project" gesture.
+ *
+ * Adding a project has always had exactly one route — point at a directory — and that route is
+ * right when a project *is* its directory. It is wrong when a deployment requires more of a
+ * project than a path before any Session may be attached to it (a process framework, a chosen
+ * specification, a build server): the guided flow has to name the project first and attach its
+ * repositories afterwards, and a directory picker that ran first would have already created
+ * the project over that directory, leaving the flow's own first step with nothing to do.
+ *
+ * So the gesture is *composable* rather than replaced: this port names what a guide must
+ * answer, the workspace surface claims the gesture for whichever guide is installed, and the
+ * directory flow stays the fallback when none is. Declared here, in the consumer, so the two
+ * packages share the shape without either importing the other's values.
+ */
+export interface ProjectOnboarding {
+  /**
+   * Claim the add gesture.
+   *
+   * A guide either resumes a walk the operator has already started or starts a new one, and it
+   * is the only party that can tell which: the decision needs the resolved project's stored
+   * progress, which belongs to the guide. The claim is therefore unconditional — the caller
+   * does not choose between resuming and restarting, and does not need to know which happened.
+   */
+  begin(): void
+  /**
+   * Withdraw an unclaimed walk request.
+   *
+   * Sent when the operator navigates to a Session or project instead of finishing the guided
+   * creation: the walk is about a project that does not exist yet, and they have just chosen one
+   * that does. Answering this with no request outstanding is expected and does nothing.
+   */
+  cancel(): void
+}
+
 declare module '@deepseek-ai/cordis' {
   interface Context {
     /** Cross-Controller Workspace navigation and directory UI capability. */
     uiWorkspace: UiWorkspace
+    /**
+     * The guided project-creation flow a deployment installs, when it installs one.
+     *
+     * Read through `ctx.get`, never injected: the guide is a *replacement* for an affordance
+     * this plugin already offers, so a deployment without one is fully functional rather than
+     * half-loaded, and making it a hard dependency would turn an optional feature into a load
+     * requirement.
+     */
+    projectOnboarding: ProjectOnboarding
   }
 }
 
@@ -300,7 +357,26 @@ class UiWorkspaceService extends Service implements UiWorkspace {
   }
 
   openSession(target: SessionTarget): void {
+    this.withdrawGuidedCreation()
     this.replaceMain(target, this.lifetime.signal, 'reveal')
+  }
+
+  openHome(): void {
+    // The exact inverse of `replaceMain`: no reference to retain, no panel to reveal — the
+    // layout's own blank-home branch is what renders once no Session is selected.
+    this.clearMain()
+  }
+
+  /**
+   * Tell an installed guide that the operator navigated instead of finishing a guided creation.
+   *
+   * Told rather than tracked: the request belongs to the guide (it is about a walk only the
+   * guide can describe), and the guide is the one that must act on it — its own gate is what
+   * has to stop opening. Answering with no request outstanding is expected, so a deployment
+   * that installs a guide is not obliged to remember whether one was ever raised.
+   */
+  private withdrawGuidedCreation(): void {
+    this.ctx.get('projectOnboarding')?.cancel()
   }
 
   openWorkspace(
@@ -316,6 +392,11 @@ class UiWorkspaceService extends Service implements UiWorkspace {
     beforeOpen: ((sessionId: SessionId) => void) | undefined,
     reuse: Pick<StartSessionOptions, 'agentPreset'>,
   ): Promise<void> {
+    // A guided creation is a request for a project that does not exist yet, so choosing one that
+    // does is the operator leaving the walk behind. Withdrawing it here — before the connection,
+    // which can take a round trip — keeps the wizard from re-opening over whatever the operator
+    // chose in the meantime.
+    this.withdrawGuidedCreation()
     const navigation = AbortSignal.any([this.ctx.layout.beginNavigation(), this.lifetime.signal])
     let sessionId: SessionId
     try {

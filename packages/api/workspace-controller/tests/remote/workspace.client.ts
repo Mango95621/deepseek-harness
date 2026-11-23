@@ -8,6 +8,7 @@
 import { ok, type RemoteTable, type StreamScript } from '@deepseek-ai/dsh-remote-mock'
 import type { RemoteFailure, RemoteResult } from '@deepseek-ai/dsh-typert-protocol'
 import type {
+  WorkspaceAddRootRequest,
   WorkspaceArchiveSessionRequest,
   WorkspaceArchiveValue,
   WorkspaceCreateRequest,
@@ -21,6 +22,7 @@ import type {
   WorkspaceOrderValue,
   WorkspacePinSessionRequest,
   WorkspacePinValue,
+  WorkspaceRemoveRootRequest,
   WorkspaceRenameRequest,
   WorkspaceUnarchiveSessionRequest,
   WorkspaceUnpinSessionRequest,
@@ -52,6 +54,7 @@ export function err<T>(error: RemoteFailure): RemoteResult<T> {
 export function workspace(id: string, overrides: Partial<WorkspaceView> = {}): WorkspaceView {
   return {
     workspaceId: id as WorkspaceId,
+    roots: [`/work/${id}`],
     path: `/work/${id}`,
     title: id,
     sessionIds: [],
@@ -93,12 +96,22 @@ export const workspaceWorld: RemoteTable = {
   unary: {
     'workspace/initializeDefault': (): RemoteResult<WorkspaceValue> => ok({ workspace: workspace('default') }),
     'workspace/create': (request: WorkspaceCreateRequest): RemoteResult<WorkspaceCreateValue> => ok({
-      workspace: workspace('created', { path: request.path }), created: true,
+      workspace: workspace('created', { roots: [request.path!], path: request.path! }), created: true,
     }),
     'workspace/rename': (request: WorkspaceRenameRequest): RemoteResult<WorkspaceValue> => ok({
       workspace: workspace(String(request.workspaceId), { title: request.title }),
     }),
     'workspace/delete': (_request: WorkspaceDeleteRequest): RemoteResult<WorkspaceDeleteValue> => ok({ deleted: true }),
+    'workspace/addRoot': (request: WorkspaceAddRootRequest): RemoteResult<WorkspaceValue> => ok({
+      workspace: workspace(String(request.workspaceId), {
+        roots: [...workspace(String(request.workspaceId)).roots, request.path],
+      }),
+    }),
+    'workspace/removeRoot': (request: WorkspaceRemoveRootRequest): RemoteResult<WorkspaceValue> => ok({
+      workspace: workspace(String(request.workspaceId), {
+        roots: workspace(String(request.workspaceId)).roots.filter(root => root !== request.path),
+      }),
+    }),
     'workspace/insertBefore': (request: WorkspaceInsertBeforeRequest): RemoteResult<WorkspaceOrderValue> => ok({ workspaceIds: [request.workspaceId] }),
     'workspace/insertSessionBefore': (request: WorkspaceInsertSessionBeforeRequest): RemoteResult<WorkspaceValue> => ok({
       workspace: workspace(String(request.workspaceId), { sessionIds: [request.sessionId] }),

@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Interface remota do YXSpec",
+    "description": "Expõe o modelo de estágios ASPICE e o estado de cada estágio ao cliente de desktop como o namespace yxspec."
+  }
+}

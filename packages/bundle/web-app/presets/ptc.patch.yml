@@ -136,3 +136,11 @@
           - id: tool-plugin-market
             name: '@deepseek-ai/dsh-plugin-market/tools'
             disabled: true
+          # YXSpec's process tools, re-enabled after the host plane disabled them.
+          # The PTC executor collapses the *presentation* to `run_code`; these
+          # schemas are what the transport can still reach, so a PTC session in a
+          # YXSpec project drives the flow through the same gated path.
+          - id: yxspec-step
+            name: '@deepseek-ai/dsh-yxspec-step'
+          - id: yxspec-remote-tools
+            name: '@deepseek-ai/dsh-yxspec-remote/tools'

@@ -185,6 +185,6 @@ Workspace 注册不意味着拥有其目录。未来的破坏性文件系统操�
 
 #### 开放：`create(path, title?)` 的 title 参数
 
-网关的按名称创建分支移除后，`title` 参数已无生产调用方；代码中的 TODO 提议把该参数与其 `@param` 子句一并移除（参见[笔记](../../../.agents/notes/archived/simplification/2026-07-31-one-route-to-add-a-workspace.md)）。
+`title` 参数如今是无根项目的唯一命名依据：网关的按名称创建分支已被移除，而当项目可以在声明任何目录之前先按标题创建时，`create` 又重新有了调用方。该参数是否应留在注册表方法上——而不是由调用方以其他方式提供标题——仍未决定；使它成为必填的请求形状（只给 `title`、不给 `path` 或 `roots`）还很新，值得重新审视（参见[笔记](../../../.agents/notes/archived/simplification/2026-07-31-one-route-to-add-a-workspace.md)）。
 
 </details>

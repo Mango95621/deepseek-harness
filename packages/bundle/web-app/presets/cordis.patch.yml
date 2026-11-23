@@ -138,3 +138,10 @@
           - id: tool-plugin-market
             name: '@deepseek-ai/dsh-plugin-market/tools'
             disabled: !!js "!ctx.get('profileContext')"
+          # YXSpec's process tools, re-enabled after the host plane disabled them.
+          # The cordis agent edits the runtime; it reaches the same stage model
+          # through the same gated tools when it is working in a YXSpec project.
+          - id: yxspec-step
+            name: '@deepseek-ai/dsh-yxspec-step'
+          - id: yxspec-remote-tools
+            name: '@deepseek-ai/dsh-yxspec-remote/tools'

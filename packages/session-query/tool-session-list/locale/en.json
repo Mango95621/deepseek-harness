@@ -1,6 +1,6 @@
 {
   "meta": {
     "title": "Session listing tools",
-    "description": "List workspaces and sessions without resuming agents."
+    "description": "List projects and sessions without resuming agents."
   }
 }

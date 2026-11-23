@@ -6,7 +6,7 @@
 
 ## 运行测试
 
-安装工作区依赖，并准备装有 Openpyxl、XlsxWriter 和 Pillow 的 Python 解释器。在 PowerShell 中，将 `$excelFuzzPython` 设置为该解释器的可执行文件路径。从仓库根目录运行，并使用新的输出目录：
+安装项目依赖，并准备装有 Openpyxl、XlsxWriter 和 Pillow 的 Python 解释器。在 PowerShell 中，将 `$excelFuzzPython` 设置为该解释器的可执行文件路径。从仓库根目录运行，并使用新的输出目录：
 
 ```powershell
 & $excelFuzzPython packages/client/ui-sidebar-documentpreview/tests/fuzz/generate.py .artifacts/excel-fuzz-new --seed 4863 --random-cases 400
@@ -41,6 +41,6 @@ pnpm exec tsx packages/client/ui-sidebar-documentpreview/tests/fuzz/run.client.t
 pnpm exec vitest run packages/client/ui-sidebar-documentpreview/tests/excel-opening.client.spec.ts packages/client/ui-sidebar-documentpreview/tests/excel-opc.client.spec.ts packages/client/ui-sidebar-documentpreview/tests/excel-xml.client.spec.ts
 ```
 
-fuzz 报告记录每个输入的 SHA-256、能否打开以及工作区状态。`validOpened` 和 `validRejected` 将打开失败与值差异分开，严格退出状态仍会拒绝这两类缺陷。已知的 1904 时间／累计时长偏移和空字符串公式缓存差异仍作为诊断失败。解析器接受的损坏输入继续作为观察结果单列。
+fuzz 报告记录每个输入的 SHA-256、能否打开以及项目状态。`validOpened` 和 `validRejected` 将打开失败与值差异分开，严格退出状态仍会拒绝这两类缺陷。已知的 1904 时间／累计时长偏移和空字符串公式缓存差异仍作为诊断失败。解析器接受的损坏输入继续作为观察结果单列。
 
 通过 `pnpm patch` 和 `pnpm patch-commit` 对发布包维护 ExcelJS 补丁。已安装的依赖树包含生成的启动脚本，不得混入补丁。在依赖缓存安装上的测试结果之前，先用 `pnpm patch --edit-dir <new-directory>` 全新解包，验证补丁能够应用。

@@ -17,8 +17,25 @@ export type { DirectoryEntry, DirectoryListing } from '@deepseek-ai/dsh-host-dir
 /** One durable Workspace projected for browser consumers. */
 export interface WorkspaceView {
   readonly workspaceId: WorkspaceId
-  /** Canonical host directory path. */
-  readonly path: string
+  /**
+   * Every canonical repository root of this project, in declared order. The
+   * first entry is the primary root. A vehicle electronics project normally
+   * spans several repositories, so this is rarely a single-element array — and
+   * it is **empty** for a project just created from a name alone.
+   */
+  readonly roots: readonly string[]
+  /**
+   * The primary root (`roots[0]`): the working directory of every session in
+   * this project, and the base for relative paths and file-tree display.
+   * Carried alongside {@link roots} so single-root consumers — the majority —
+   * do not index an array.
+   *
+   * `null` while the project declares no repository root yet: a project is
+   * created from a name alone, and its repositories are attached later. `null`
+   * rather than `undefined` because this crosses a Remote boundary, which
+   * carries JSON only.
+   */
+  readonly path: string | null
   /** User-visible title. */
   readonly title: string
   /** Sessions accounted to this Workspace in manual order. */
@@ -35,6 +52,8 @@ declare module '@deepseek-ai/dsh-typert-protocol' {
     'workspace/invalid-path': { readonly path: string }
     /** Another Workspace already uses the requested name. */
     'workspace/name-conflict': { readonly name: string }
+    /** The project does not declare that root. */
+    'workspace/root-invalid': { readonly workspaceId: WorkspaceId; readonly path: string }
     /**
      * The Session still has running work — its own turn, a subagent, a
      * background job, or an active schedule — so archiving was refused
@@ -63,6 +82,39 @@ declare module '@deepseek-ai/dsh-typert-protocol' {
 
 /** Existing directory requested for Workspace adoption. */
 export interface WorkspaceCreateRequest {
+  /**
+   * One existing directory, or several. A project regularly spans more than
+   * one code repository — an IVI application, MCU firmware, a vendored AOSP
+   * tree — so the caller may declare them together. The first entry is the
+   * primary root and becomes the working directory of this project's sessions.
+   * Omit `roots` to keep the single-directory form.
+   */
+  readonly path?: string
+  /**
+   * Several roots at once; mutually exclusive with `path`. The first is primary.
+   * An empty array is meaningful: the project starts with no repository root and
+   * gains them later through {@link WorkspaceAddRootRequest}.
+   */
+  readonly roots?: readonly string[]
+  /**
+   * User-visible name. Required when no directory is given, because the name is
+   * then the project's only identity. Ignored when a directory is given and a
+   * project already covers it, since that call resolves rather than creates.
+   */
+  readonly title?: string
+}
+
+/** One repository root being added to an existing project. */
+export interface WorkspaceAddRootRequest {
+  readonly workspaceId: WorkspaceId
+  /** Existing directory to append as a non-primary root. */
+  readonly path: string
+}
+
+/** One repository root being dropped from an existing project. */
+export interface WorkspaceRemoveRootRequest {
+  readonly workspaceId: WorkspaceId
+  /** Directory to drop. Removing the last root leaves a project with none. */
   readonly path: string
 }
 

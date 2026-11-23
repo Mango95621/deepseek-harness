@@ -5050,9 +5050,21 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
     methods: [
       {
         signature: '@Remote(\'create\') create(request: WorkspaceCreateRequest): Promise<WorkspaceCreateValue>',
-        description: 'Create or idempotently resolve one Workspace over an existing directory.',
-        parameters: [{ name: 'request', description: 'directory path to register.' }],
-        returns: 'the Workspace and whether this call created it.',
+        description: 'Create or idempotently resolve one project.\n\nNaming no directory creates a project from its title alone; its repositories are attached afterwards through addRoot.',
+        parameters: [{ name: 'request', description: 'one directory path, the root list (primary first), or neither plus a title.' }],
+        returns: 'the project and whether this call created it.',
+      },
+      {
+        signature: '@Remote(\'addRoot\') addRoot(request: WorkspaceAddRootRequest): Promise<WorkspaceValue>',
+        description: 'Append a repository root to an existing project.',
+        parameters: [{ name: 'request', description: 'project identity and the directory to append.' }],
+        returns: 'the updated project projection.',
+      },
+      {
+        signature: '@Remote(\'removeRoot\') removeRoot(request: WorkspaceRemoveRootRequest): Promise<WorkspaceValue>',
+        description: 'Drop a repository root from a project.',
+        parameters: [{ name: 'request', description: 'project identity and the directory to drop.' }],
+        returns: 'the updated project projection.',
       },
       {
         signature: '@Remote(\'initializeDefault\') async initializeDefault(signal: AbortSignal): Promise<WorkspaceValue | undefined>',
@@ -5167,10 +5179,22 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
     description: 'Durable workspace registry. Startup waits for `sessionPersistence`, builds one canonical-cwd header index, and completes the one-time history bootstrap before the service becomes active. The persistence dependency is mandatory so an unavailable peer can never be mistaken for an empty history and commit the initialized marker.',
     methods: [
       {
-        signature: 'async create(path: string, title?: string): Promise<Workspace>',
-        description: 'Create or reuse a workspace for an existing directory. The fully qualified path is canonicalized through `fs.realpath`; a relative, nonexistent, or non-directory path rejects. Repeated calls for the same canonical path return the existing entity without changing its title. A newly created workspace is prepended to the durable registry order. Different canonical paths may share a display title.',
-        parameters: [{ name: 'path', description: 'Existing directory to own, in a fully qualified path spelling.' }, { name: 'title', description: 'Display title used only when a new record is created.' }],
-        returns: 'the existing or newly durable workspace.',
+        signature: 'async create(path: string | readonly string[], title?: string): Promise<Workspace>',
+        description: 'Create a project, optionally over one or more existing code-repository directories. Every fully qualified path is canonicalized through `fs.realpath`; a relative, nonexistent, or non-directory path rejects. The caller may pass one path or many: a single-root project is the common case, and a multi-root project is how one delivery unit tracks, say, an IVI application, MCU firmware, and a vendored AOSP tree together. The first path is the primary root and becomes the working directory of every session created against this project.\n\nAn **empty** list creates a project with no repositories, which is the shape a client uses when it asks for the project\'s name first and its directories afterwards. Such a project carries a title but no primary root; see Workspace.path. A title is then required, because the primary root\'s final segment is the default title and there is none.\n\nReuse matches on the **primary** root, so it applies only to a call that names one: repeated calls whose first path canonicalizes to an existing project\'s primary root return that project without changing its roots or title. A project with no roots is never reused this way — it has no path to match on — and a rootless call therefore always creates. A newly created project is prepended to the durable registry order. Different projects may share a display title.',
+        parameters: [{ name: 'path', description: 'One existing directory, an array whose first entry is the primary root, or an empty array for a project whose repositories are not declared yet.' }, { name: 'title', description: 'Display title; required when `path` is empty, since there is no root to derive one from.' }],
+        returns: 'the existing or newly durable project.',
+      },
+      {
+        signature: 'async addRoot(id: WorkspaceId, path: string): Promise<void>',
+        description: 'Add one repository root to an existing project. The path is canonicalized like create; a root already declared by this project resolves without writing, and a primary-root match is left where it is (an added root always appends, so the primary never changes by accident).',
+        parameters: [{ name: 'id', description: 'The project to extend.' }, { name: 'path', description: 'Existing directory to append as a root.' }],
+        returns: 'resolution after durability.',
+      },
+      {
+        signature: 'async removeRoot(id: WorkspaceId, path: string): Promise<void>',
+        description: 'Remove one repository root from a project. Removing a root the project does not declare resolves without writing.\n\nRemoving the **last** root leaves the project with none, which is the state it had before its first repository was declared: the project keeps its identity and its title and carries no working directory. Deleting the project is the separate operation for "no longer tracked" — dropping its directories is how a caller reconfigures which repositories it spans.\n\nAny session working in the removed root is detached by the same write, so the account never names a directory the project no longer declares.',
+        parameters: [{ name: 'id', description: 'The project to narrow.' }, { name: 'path', description: 'Directory to drop.' }],
+        returns: 'resolution after durability.',
       },
       {
         signature: 'initializeDefault(resolveDirectory: () => Promise<string>): Promise<Workspace | undefined>',
@@ -5228,9 +5252,9 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
       },
       {
         signature: 'async resolveByPath(path: string): Promise<Workspace | undefined>',
-        description: 'Resolve by canonical directory path without creating or mutating a workspace. A missing path rejects during `realpath`; an existing unowned directory returns `undefined`.',
+        description: 'Resolve by canonical directory path without creating or mutating a project. A missing path rejects during `realpath`; an existing unowned directory returns `undefined`. A path matching any declared root resolves — including a secondary root, so a caller holding an MCU-firmware path still finds the project whose primary root is the IVI application.',
         parameters: [{ name: 'path', description: 'Existing directory path in a fully qualified spelling.' }],
-        returns: 'the workspace owning the canonical path, when one exists.',
+        returns: 'the project declaring the canonical path as one of its roots, when one exists.',
       },
     ],
   },
@@ -5272,6 +5296,245 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         description: 'Read the archive cleanup of a Session\'s created checkout; waiting never starts one. Absent without the Workspace and query providers.',
         parameters: [{ name: 'session', description: 'archived Session whose cleanup is read.' }, { name: 'revision', description: 'null reads at once; a matching revision waits for that attempt to settle.' }],
         returns: 'the attempt state, or null when none exists, the revision was superseded, or the service is stopping.',
+      },
+    ],
+  },
+  {
+    key: 'yxspec',
+    summary: 'The YXSpec domain service.',
+    description: 'The YXSpec domain service. Read-mostly: consumers gate on it, it does not gate on them.',
+    methods: [
+      {
+        signature: 'stages(): readonly YxspecStage[]',
+        description: 'Every declared stage, in business order (SWE.1 → SWE.5, then SUP/SPL when present).',
+        parameters: [],
+        returns: 'the stage model; never empty.',
+      },
+      {
+        signature: 'stage(id: string): YxspecStage | undefined',
+        description: 'Resolve one stage by id.',
+        parameters: [{ name: 'id', description: 'the stage id.' }],
+        returns: 'the stage, or `undefined` when the deployment declares no such stage.',
+      },
+      {
+        signature: 'step(stepId: string): { stage: YxspecStage; step: YxspecStep } | undefined',
+        description: 'Resolve one step across the whole model. Enumerated so a caller holding only a step id (as a gate hook does) can find its stage and frozen-ness.',
+        parameters: [{ name: 'stepId', description: 'the step id, unique across the model by convention.' }],
+        returns: 'the step and its owning stage, or `undefined`.',
+      },
+      {
+        signature: 'isFrozenStep(stepId: string): boolean',
+        description: 'Whether a step is a frozen ❄ point requiring main-session human confirmation.',
+        parameters: [{ name: 'stepId', description: 'the step id.' }],
+        returns: 'true when the step is frozen; false when unknown or not frozen.',
+      },
+      {
+        signature: 'activeStep(agent: object): { stage: YxspecStage; step: YxspecStep } | undefined',
+        description: 'The step a given agent is currently on, as set by the step driver. The gate hook reads this to decide which step\'s input contract to enforce; with no active step, no step gate applies.\n\nOwnership is per-agent so a fan-out workflow\'s workers do not gate on each other\'s progress.',
+        parameters: [{ name: 'agent', description: 'the agent whose active step to read.' }],
+        returns: 'the active step and its stage, or `undefined` when the agent has none.',
+      },
+      {
+        signature: 'setActiveStep(agent: object, stepId: string | undefined): boolean',
+        description: 'Set the step an agent is working on. The step driver calls this when it hands out a step; the gate hook reads it.',
+        parameters: [{ name: 'agent', description: 'the agent taking the step.' }, { name: 'stepId', description: 'the step id, or `undefined` to clear.' }],
+        returns: 'true when the step id resolved in the stage model.',
+      },
+      {
+        signature: 'async snapshot(): Promise<YxspecSnapshot>',
+        description: 'The whole declarative model plus the read track map, for a UI or a step driver that wants one call.',
+        parameters: [],
+        returns: 'an immutable snapshot.',
+      },
+      {
+        signature: 'async domains(): Promise<readonly YxspecDomainTarget[]>',
+        description: 'The functional-domain → track map, read from the workspace\'s track-map file. Results are cached for the process lifetime; the map is deployment configuration, not live state.',
+        parameters: [],
+        returns: 'the domain assignments; empty when the file is absent or malformed.',
+      },
+      {
+        signature: 'async trackOf(domain: string): Promise<YxspecTrack>',
+        description: 'Assign a functional domain to its track.',
+        parameters: [{ name: 'domain', description: 'the domain key.' }],
+        returns: 'the assigned track, defaulting to `both` when unmapped.',
+      },
+      {
+        signature: 'async status(stageId: string, landed: (path: string) => Promise<boolean>): Promise<YxspecStageStatus>',
+        description: 'Progress of one stage, derived from the artifact ledger rather than from any agent self-report. A stage is complete only when its terminal step\'s outputs have landed.\n\nThis is the seam `yxspec-step` and `yxspec-artifact` cooperate on; the domain service exposes the hook so a UI can read the same answer without duplicating the rule.',
+        parameters: [{ name: 'stageId', description: 'the stage id.' }, { name: 'landed', description: 'predicate answering whether a workspace-relative path has landed.' }],
+        returns: 'the stage\'s status.',
+      },
+      {
+        signature: 'async inputsLanded(step: YxspecStep, landed: (path: string) => Promise<boolean>): Promise<boolean>',
+        description: 'Whether every declared input of a step has landed.',
+        parameters: [{ name: 'step', description: 'the step whose inputs to test.' }, { name: 'landed', description: 'the path predicate.' }],
+        returns: 'true when all inputs are present (or the step declares none).',
+      },
+    ],
+  },
+  {
+    key: 'yxspecArtifacts',
+    summary: 'The artifact ledger.',
+    description: 'The artifact ledger. Answers existence queries against the workspace root the YXSpec service resolved, so every consumer shares one path base.',
+    methods: [
+      {
+        signature: 'async landed(rel: string): Promise<boolean>',
+        description: 'Whether a workspace-relative path has landed as a readable file. Re-stats on every call; a path that vanished since an earlier call reads as absent.',
+        parameters: [{ name: 'rel', description: 'the workspace-relative path (POSIX separators).' }],
+        returns: 'true when the path exists and is a file.',
+      },
+      {
+        signature: 'async landedOf(rels: readonly string[]): Promise<readonly string[]>',
+        description: 'Which of the given paths have landed, in one pass.',
+        parameters: [{ name: 'rels', description: 'workspace-relative paths.' }],
+        returns: 'the subset that exists on disk, in input order.',
+      },
+      {
+        signature: 'async missingOf(rels: readonly string[]): Promise<readonly string[]>',
+        description: 'Which of the given paths are still missing.',
+        parameters: [{ name: 'rels', description: 'workspace-relative paths.' }],
+        returns: 'the subset absent from disk, in input order.',
+      },
+      {
+        signature: 'async observe(rel: string): Promise<ArtifactWrite | undefined>',
+        description: 'Record an observed write. Called by the plugin\'s own `fs` observation hook; public so a deployment can feed the ledger from an out-of-band watcher.',
+        parameters: [{ name: 'rel', description: 'the workspace-relative path written.' }],
+        returns: 'the recorded observation, or `undefined` when the path is outside the workspace.',
+      },
+      {
+        signature: 'isDeclared(rel: string): boolean',
+        description: 'Whether any stage step declares this path as a required input.',
+        parameters: [{ name: 'rel', description: 'the workspace-relative path.' }],
+        returns: 'true when some step gates on it.',
+      },
+    ],
+  },
+  {
+    key: 'yxspecController',
+    summary: 'Host service backing the generated `ctx.remote.yxspec` namespace.',
+    description: 'Host service backing the generated `ctx.remote.yxspec` namespace. Read-only: the client renders process state, it does not advance it. Advancing a step is a tool call, which travels through the gate — the same path an agent takes.',
+    methods: [
+      {
+        signature: '@Remote async status(landedStages?: string[]): Promise<YxspecStatusValue>',
+        description: 'The declared identity, stage model, and dual-track map in one call, plus each named stage\'s landing status.',
+        parameters: [{ name: 'landedStages', description: 'stage ids to compute status for; omitted means every stage.' }],
+        returns: 'the projected process state.',
+        throws: ['RemoteError when the domain service or its ledger is not mounted.'],
+      },
+      {
+        signature: '@Remote async documents( workspaceId: string, extraDirectories?: string[], ): Promise<YxspecDocumentListing>',
+        description: 'Candidate specification documents for one project, for the onboarding wizard\'s first step, together with the directories the host enumerated to find them. A bounded enumeration of the project\'s declared input and design directories; an unknown project, an absent directory, or an unmounted registry all yield an empty listing rather than an error, because "this project has no inputs yet" is a state the wizard renders and not a failure.\n\nThe search report travels with the candidates rather than in a second call: a client that asked twice could be answered by two different filesystem states, and the report is exactly what makes the empty case legible.\n\n`extraDirectories` is how the operator widens the search beyond the project\'s own layout. It is a parameter rather than host state, and this controller stays read-only: where the operator looks is a property of one operator\'s search, not of the project, and storing it here would make an unvalidated write path into durable state to answer a question the caller already holds. The client persists its own additions per project and passes them back on each call; the host validates and walks them exactly as it walks the project\'s own directories.',
+        parameters: [{ name: 'workspaceId', description: 'the project whose candidate documents to list.' }, { name: 'extraDirectories', description: 'absolute directories to search in addition to the project\'s own; omitted or empty means the project\'s layout decides the search.' }],
+        returns: 'the candidates, the absolute directories searched, and whether the ceiling truncated the listing.',
+      },
+      {
+        signature: '@Remote declaredArtifacts(): string[]',
+        description: 'Every workspace-relative path the domain model declares, so a client can render the artifact tree without hardcoding the layout.',
+        parameters: [],
+        returns: 'the declared artifact paths, de-duplicated and sorted.',
+        throws: ['RemoteError when the domain service is not mounted.'],
+      },
+      {
+        signature: '@Remote declaredArtifactsOf(stageId: string): string[]',
+        description: 'The declared artifact paths belonging to one stage. A client rendering a stage detail view calls this instead of filtering declaredArtifacts.',
+        parameters: [{ name: 'stageId', description: 'the stage whose declared inputs to return.' }],
+        returns: 'the stage\'s declared artifact paths, de-duplicated and sorted; empty when the stage id is unknown.',
+        throws: ['RemoteError when the domain service is not mounted.'],
+      },
+    ],
+  },
+  {
+    key: 'yxspecDispatch',
+    summary: 'The blind dispatcher.',
+    description: 'The blind dispatcher. Exposes rendering and spawning; deliberately exposes no way to read a rendered prompt back.',
+    methods: [
+      {
+        signature: 'async render(role: string, workerId: string, parameters: Readonly<Record<string, string>>): Promise<DispatchHandle>',
+        description: 'Render one worker role prompt from its template and land it under the spawn directory.\n\nTemplates use `{{name}}` anchors; every anchor present in the template must have a value in `parameters`, and every value must be used. A leftover anchor fails the render rather than dispatching a prompt with an unresolved placeholder — the same all-or-nothing rule the original renderer enforced.',
+        parameters: [{ name: 'role', description: 'the worker role (kebab-case), naming the `prompts/<role>.md` template.' }, { name: 'workerId', description: 'per-worker unique id; two concurrent same-role dispatches must differ.' }, { name: 'parameters', description: 'the authoritative run parameters filling the anchors.' }],
+        returns: 'a handle carrying the file path and hash, never the body.',
+      },
+      {
+        signature: 'describe(handle: DispatchHandle): string',
+        description: 'The diagnostic a controller receives instead of a prompt body: counts, never content.',
+        parameters: [{ name: 'handle', description: 'the handle to describe.' }],
+        returns: 'a one-line diagnostic.',
+      },
+      {
+        signature: 'buildSpawnPrompt(request: DispatchRequest): string',
+        description: 'Build the spawn prompt for a worker. The prompt carries the file path and hash and instructs the worker to verify the hash before acting; it never embeds the body.',
+        parameters: [{ name: 'request', description: 'the dispatch request.' }],
+        returns: 'the spawn prompt string.',
+      },
+    ],
+  },
+  {
+    key: 'yxspecRemote',
+    summary: 'The remote build service.',
+    description: 'The remote build service. Owns declarations, executes recipes, and records every run.',
+    methods: [
+      {
+        signature: 'async declare( workspaceId: string, server: YxspecRemoteServer, now: string = new Date().toISOString(), ): Promise<RemoteServerRecord>',
+        description: 'Declare (or replace) a build server for one project.',
+        parameters: [{ name: 'workspaceId', description: 'the owning project.' }, { name: 'server', description: 'the declaration; its `id` is the key within the project.' }, { name: 'now', description: 'ISO-8601 stamp; defaults to the current instant.' }],
+        returns: 'the stored record.',
+      },
+      {
+        signature: 'async forget(workspaceId: string, serverId: string): Promise<boolean>',
+        description: 'Remove a declaration. Recorded runs stay: they are evidence of work that happened, and deleting the server does not un-happen the build.',
+        parameters: [{ name: 'workspaceId', description: 'the owning project.' }, { name: 'serverId', description: 'the declaration to remove.' }],
+        returns: 'true when a declaration existed.',
+      },
+      {
+        signature: 'async list(workspaceId: string): Promise<readonly RemoteServerRecord[]>',
+        description: 'The servers one project declared, in declaration order.',
+        parameters: [{ name: 'workspaceId', description: 'the project to list.' }],
+        returns: 'the stored declarations.',
+      },
+      {
+        signature: 'async server(workspaceId: string, serverId: string): Promise<RemoteServerRecord | undefined>',
+        description: 'Resolve one declaration.',
+        parameters: [{ name: 'workspaceId', description: 'the owning project.' }, { name: 'serverId', description: 'the server id within that project.' }],
+        returns: 'the record, or `undefined` when the project declares no such server.',
+      },
+      {
+        signature: 'async probe( workspaceId: string, serverId: string, signal?: AbortSignal, ): Promise<YxspecRemoteProbe>',
+        description: 'Probe a declared server: SSH handshake, platform, and base-directory presence (creating it when absent).\n\nA probe never throws for an unreachable server — reachability is the value being reported, and a caller rendering a picker needs the negative answer as much as the positive one. It throws only when the project declares no such server, which is a caller mistake rather than a connectivity fact.',
+        parameters: [{ name: 'workspaceId', description: 'the owning project.' }, { name: 'serverId', description: 'the server to probe.' }, { name: 'signal', description: 'cancellation.' }],
+        returns: 'the probe outcome.',
+        throws: ['when the project declares no such server.'],
+      },
+      {
+        signature: 'async run( workspaceId: string, request: YxspecRemoteRunRequest, signal?: AbortSignal, ): Promise<YxspecRemoteRunResult>',
+        description: 'Run one declared recipe against a project tree.\n\nA failed build is returned, not thrown: a compile error is the answer the caller asked for, and what a failure *means* belongs to the flow\'s gate, not to the transport. Only a transport-level impossibility (undeclared server or recipe, no SSH client, no archive tool) throws.',
+        parameters: [{ name: 'workspaceId', description: 'the owning project.' }, { name: 'request', description: 'the server, recipe, and optional source overrides.' }, { name: 'signal', description: 'cancellation.' }],
+        returns: 'the run outcome, also recorded in the ledger.',
+        throws: ['when the declaration is missing or the transport cannot start.'],
+      },
+      {
+        signature: 'async runsFor(workspaceId: string, limit: number = 20): Promise<readonly RemoteRunRecord[]>',
+        description: 'The recorded runs for one project, newest first.',
+        parameters: [{ name: 'workspaceId', description: 'the project to read.' }, { name: 'limit', description: 'maximum entries to return.' }],
+        returns: 'the stored run records.',
+      },
+      {
+        signature: 'async lastSuccess( workspaceId: string, serverId: string, recipe: string, ): Promise<RemoteRunRecord | undefined>',
+        description: 'The most recent run of one recipe that exited zero. The question a gate asks before letting a later stage start.',
+        parameters: [{ name: 'workspaceId', description: 'the project to read.' }, { name: 'serverId', description: 'the server the run targeted.' }, { name: 'recipe', description: 'the recipe id.' }],
+        returns: 'that run, or `undefined` when the recipe has never passed.',
+      },
+    ],
+  },
+  {
+    key: 'yxspecRemoteController',
+    summary: 'Host service backing the generated `ctx.remote.yxspecRemote` namespace.',
+    description: 'Host service backing the generated `ctx.remote.yxspecRemote` namespace.\n\nMounted unconditionally by this package, but its data source is not: when `ctx.yxspecRemote` is absent the list is empty rather than an error. A wizard step asking "which build server?" shows its empty state, which is the truth on a deployment that mounts no remote plugin.',
+    methods: [
+      {
+        signature: '@Remote async servers(workspaceId: string): Promise<YxspecRemoteServerView[]>',
+        description: 'The build servers one project declared, as the client renders them.\n\nThe record\'s own fields are projected rather than returned whole: `recipes` maps a recipe id to a server-side command template, which is deployment detail the browser has no use for, and a Remote boundary should carry what the caller reads.',
+        parameters: [{ name: 'workspaceId', description: 'the project whose declarations to list.' }],
+        returns: 'the declared servers in declaration order; empty when the remote plugin is not mounted or the project declared none.',
       },
     ],
   },
@@ -6079,6 +6342,22 @@ export const EVENT_API: readonly EventApiEntry[] = [
     description: 'A cleanup attempt changed state. Fires once at admission with `scheduled` and once at settlement with the final status.',
     parameters: [{ name: 'info', description: 'the archived Session, the checkout, and the attempt state.' }],
   },
+  {
+    name: 'yxspec/artifact-write',
+    mode: 'emit',
+    signature: '\'yxspec/artifact-write\'(write: ArtifactWrite): void',
+    summary: 'An artifact write was observed in the workspace.',
+    description: 'An artifact write was observed in the workspace. Emitted only when `emitIntervalMs` is positive; the ledger answers queries regardless.',
+    parameters: [{ name: 'write', description: 'the observed write.' }],
+  },
+  {
+    name: 'yxspec/remote-run',
+    mode: 'emit',
+    signature: '\'yxspec/remote-run\'(result: YxspecRemoteRunResult, workspaceId: string): void',
+    summary: 'A remote build run settled.',
+    description: 'A remote build run settled. Emitted after the ledger write, so a listener reading `runsFor` sees the run it was told about.',
+    parameters: [{ name: 'result', description: 'the settled run.' }, { name: 'workspaceId', description: 'the project the run belongs to.' }],
+  },
 ]
 
 /** Shapes of every exported type the Service and Event signatures reference (transitively), sorted by name. */
@@ -6314,6 +6593,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'ArchiveSessionOptions',
     declaration: 'export interface ArchiveSessionOptions {\n    readonly stopActivity?: boolean;\n}',
+  },
+  {
+    name: 'ArtifactWrite',
+    declaration: 'export interface ArtifactWrite {\n    readonly path: string;\n    readonly bytes: number;\n    readonly declared: boolean;\n}',
   },
   {
     name: 'AskOptions',
@@ -7126,6 +7409,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'DirectoryRegistrationHandle',
     declaration: 'export interface DirectoryRegistrationHandle {\n    (): void;\n    replace(entries: readonly LlmConfigurableProvider[]): void;\n}',
+  },
+  {
+    name: 'DispatchHandle',
+    declaration: 'export interface DispatchHandle {\n    readonly role: string;\n    readonly workerId: string;\n    readonly promptFile: string;\n    readonly promptSha256: string;\n    readonly bytes: number;\n}',
   },
   {
     name: 'Domain',
@@ -9114,6 +9401,14 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'RemoteEventHostInfo',
     declaration: 'export interface RemoteEventHostInfo {\n    readonly home: string;\n}',
+  },
+  {
+    name: 'RemoteRunRecord',
+    declaration: 'export type RemoteRunRecord = z.infer<typeof remoteRunRecord>;',
+  },
+  {
+    name: 'RemoteServerRecord',
+    declaration: 'export type RemoteServerRecord = z.infer<typeof remoteServerRecord>;',
   },
   {
     name: 'RemoteStream',
@@ -11425,7 +11720,11 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'Workspace',
-    declaration: 'export interface Workspace {\n    readonly id: WorkspaceId;\n    readonly path: string;\n    readonly title: string;\n    readonly createdAt: string;\n    readonly updatedAt: string;\n    readonly sessionIds: readonly SessionId[];\n    getSessionHeaders(): readonly SessionHeader[];\n    setTitle(title: string): Promise<void>;\n    attachSession(sessionId: SessionId): Promise<void>;\n    insertSessionBefore(sessionId: SessionId, beforeSessionId?: SessionId): Promise<void>;\n    detachSession(sessionId: SessionId): Promise<void>;\n    status(): Promise<\'ok\' | \'missing-dir\'>;\n}',
+    declaration: 'export interface Workspace {\n    readonly id: WorkspaceId;\n    readonly roots: readonly string[];\n    readonly path: string | undefined;\n    readonly title: string;\n    readonly createdAt: string;\n    readonly updatedAt: string;\n    readonly sessionIds: readonly SessionId[];\n    getSessionHeaders(): readonly SessionHeader[];\n    setTitle(title: string): Promise<void>;\n    attachSession(sessionId: SessionId): Promise<void>;\n    insertSessionBefore(sessionId: SessionId, beforeSessionId?: SessionId): Promise<void>;\n    detachSession(sessionId: SessionId): Promise<void>;\n    status(): Promise<\'ok\' | \'missing-dir\'>;\n}',
+  },
+  {
+    name: 'WorkspaceAddRootRequest',
+    declaration: 'export interface WorkspaceAddRootRequest {\n    readonly workspaceId: WorkspaceId;\n    readonly path: string;\n}',
   },
   {
     name: 'WorkspaceArchiveSessionRequest',
@@ -11457,7 +11756,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'WorkspaceCreateRequest',
-    declaration: 'export interface WorkspaceCreateRequest {\n    readonly path: string;\n}',
+    declaration: 'export interface WorkspaceCreateRequest {\n    readonly path?: string;\n    readonly roots?: readonly string[];\n    readonly title?: string;\n}',
   },
   {
     name: 'WorkspaceCreateValue',
@@ -11556,6 +11855,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface WorkspacePinValue {\n    readonly pinnedSessionIds: readonly SessionId[];\n}',
   },
   {
+    name: 'WorkspaceRemoveRootRequest',
+    declaration: 'export interface WorkspaceRemoveRootRequest {\n    readonly workspaceId: WorkspaceId;\n    readonly path: string;\n}',
+  },
+  {
     name: 'WorkspaceRenameRequest',
     declaration: 'export interface WorkspaceRenameRequest {\n    readonly workspaceId: WorkspaceId;\n    readonly title: string;\n}',
   },
@@ -11573,11 +11876,91 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'WorkspaceView',
-    declaration: 'export interface WorkspaceView {\n    readonly workspaceId: WorkspaceId;\n    readonly path: string;\n    readonly title: string;\n    readonly sessionIds: readonly SessionId[];\n    readonly createdAt: string;\n    readonly updatedAt: string;\n}',
+    declaration: 'export interface WorkspaceView {\n    readonly workspaceId: WorkspaceId;\n    readonly roots: readonly string[];\n    readonly path: string | null;\n    readonly title: string;\n    readonly sessionIds: readonly SessionId[];\n    readonly createdAt: string;\n    readonly updatedAt: string;\n}',
   },
   {
     name: 'WorktreeCleanup',
     declaration: 'export interface WorktreeCleanup {\n    readonly revision: number;\n    readonly status: \'scheduled\' | \'retained\' | \'removed\' | \'failed\';\n}',
+  },
+  {
+    name: 'YxspecDocumentListing',
+    declaration: 'export interface YxspecDocumentListing {\n    documents: YxspecDocumentView[];\n    searched: string[];\n    truncated: boolean;\n}',
+  },
+  {
+    name: 'YxspecDocumentView',
+    declaration: 'export interface YxspecDocumentView {\n    path: string;\n    title: string;\n    partition?: string;\n    size: number;\n    rootIndex: number;\n}',
+  },
+  {
+    name: 'YxspecDomainTarget',
+    declaration: 'export interface YxspecDomainTarget {\n    readonly domain: string;\n    readonly track: YxspecTrack;\n    readonly evidence?: string;\n}',
+  },
+  {
+    name: 'YxspecDomainView',
+    declaration: 'export interface YxspecDomainView {\n    domain: string;\n    track: string;\n    hasEvidence: boolean;\n}',
+  },
+  {
+    name: 'YxspecIdentityView',
+    declaration: 'export interface YxspecIdentityView {\n    specId: string;\n    projectName: string;\n    customer: string;\n    productType: string;\n}',
+  },
+  {
+    name: 'YxspecRemoteProbe',
+    declaration: 'export interface YxspecRemoteProbe {\n    readonly serverId: string;\n    readonly reachable: boolean;\n    readonly platform?: string;\n    readonly error?: string;\n}',
+  },
+  {
+    name: 'YxspecRemoteRunRequest',
+    declaration: 'export interface YxspecRemoteRunRequest {\n    readonly serverId: string;\n    readonly recipe: string;\n    readonly sourceDirectory?: string;\n    readonly push?: boolean;\n    readonly extraArgs?: string;\n}',
+  },
+  {
+    name: 'YxspecRemoteRunResult',
+    declaration: 'export interface YxspecRemoteRunResult {\n    readonly runId: string;\n    readonly serverId: string;\n    readonly recipe: string;\n    readonly remoteDirectory: string;\n    readonly command: string;\n    readonly exitCode: number | null;\n    readonly log: string;\n    readonly truncated: boolean;\n    readonly timedOut: boolean;\n    readonly durationMs: number;\n    readonly treeDigest?: string;\n    readonly logSha256: string;\n}',
+  },
+  {
+    name: 'YxspecRemoteServer',
+    declaration: 'export interface YxspecRemoteServer {\n    readonly id: string;\n    readonly title: string;\n    readonly destination: string;\n    readonly baseDirectory: string;\n    readonly transport: YxspecRemoteTransport;\n    readonly recipes: Readonly<Record<string, string>>;\n    readonly sshExecutable?: string;\n    readonly timeoutMs: number;\n}',
+  },
+  {
+    name: 'YxspecRemoteServerView',
+    declaration: 'export interface YxspecRemoteServerView {\n    serverId: string;\n    title: string;\n    destination: string;\n    baseDirectory: string;\n    transport: string;\n    recipeIds: string[];\n    declaredAt: string;\n    lastProbeAt?: string;\n    lastPlatform?: string;\n}',
+  },
+  {
+    name: 'YxspecRemoteTransport',
+    declaration: 'export type YxspecRemoteTransport = \'ssh\';',
+  },
+  {
+    name: 'YxspecSnapshot',
+    declaration: 'export interface YxspecSnapshot {\n    readonly identity: YxspecSpecIdentity;\n    readonly stages: readonly YxspecStage[];\n    readonly domains: readonly YxspecDomainTarget[];\n    readonly tracks: readonly YxspecTrack[];\n}',
+  },
+  {
+    name: 'YxspecSpecIdentity',
+    declaration: 'export interface YxspecSpecIdentity {\n    readonly specId: string;\n    readonly projectName: string;\n    readonly customer: string;\n    readonly productType: string;\n}',
+  },
+  {
+    name: 'YxspecStage',
+    declaration: 'export interface YxspecStage {\n    readonly id: string;\n    readonly title: string;\n    readonly aspice: string;\n    readonly group: string;\n    readonly steps: readonly YxspecStep[];\n}',
+  },
+  {
+    name: 'YxspecStageStatus',
+    declaration: 'export interface YxspecStageStatus {\n    readonly stage: string;\n    readonly currentStep: string | undefined;\n    readonly complete: boolean;\n}',
+  },
+  {
+    name: 'YxspecStageView',
+    declaration: 'export interface YxspecStageView {\n    id: string;\n    title: string;\n    aspice: string;\n    group: string;\n    steps: YxspecStepView[];\n    landed?: boolean;\n    missing?: readonly string[];\n}',
+  },
+  {
+    name: 'YxspecStatusValue',
+    declaration: 'export interface YxspecStatusValue {\n    identity: YxspecIdentityView;\n    root: string;\n    stages: YxspecStageView[];\n    domains: YxspecDomainView[];\n    tracks: string[];\n}',
+  },
+  {
+    name: 'YxspecStep',
+    declaration: 'export interface YxspecStep {\n    readonly id: string;\n    readonly cell: string;\n    readonly title: string;\n    readonly frozen: boolean;\n    readonly requiredInputs: readonly string[];\n    readonly gateScript?: string;\n}',
+  },
+  {
+    name: 'YxspecStepView',
+    declaration: 'export interface YxspecStepView {\n    id: string;\n    cell: string;\n    title: string;\n    frozen: boolean;\n    requiredInputs: string[];\n    hasGateScript: boolean;\n}',
+  },
+  {
+    name: 'YxspecTrack',
+    declaration: 'export type YxspecTrack = \'mcu\' | \'mpu\' | \'both\';',
   },
 ]
 

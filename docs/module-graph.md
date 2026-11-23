@@ -230,6 +230,7 @@ flowchart TD
     pkg_client_ui_user_questions["client-ui-user-questions"]
     pkg_client_ui_workflow_run["client-ui-workflow-run"]
     pkg_client_ui_workspace["client-ui-workspace"]
+    pkg_client_ui_yxspec["client-ui-yxspec"]
     pkg_client_web["client-web"]
   end
   subgraph group_compaction["packages/compaction"]
@@ -506,6 +507,16 @@ flowchart TD
   subgraph group_workspace["packages/workspace"]
     pkg_workspace["workspace"]
   end
+  subgraph group_yxspec["packages/yxspec"]
+    pkg_yxspec["yxspec"]
+    pkg_yxspec_api["yxspec-api"]
+    pkg_yxspec_artifact["yxspec-artifact"]
+    pkg_yxspec_dispatch["yxspec-dispatch"]
+    pkg_yxspec_freeze["yxspec-freeze"]
+    pkg_yxspec_gate["yxspec-gate"]
+    pkg_yxspec_remote["yxspec-remote"]
+    pkg_yxspec_step["yxspec-step"]
+  end
   pkg_atomic_write --> pkg_error
   pkg_llm --> pkg_error
   pkg_session --> pkg_scope
@@ -527,6 +538,7 @@ flowchart TD
   pkg_win32_process --> pkg_error
   pkg_typert_loader --> pkg_typert_registry
   pkg_typert_protocol --> pkg_error
+  pkg_yxspec_artifact --> pkg_yxspec
   pkg_util_ripgrep --> pkg_subprocess
   pkg_system_prompt --> pkg_llm
   pkg_system_prompt --> pkg_scope
@@ -862,6 +874,12 @@ flowchart TD
   pkg_terminal_bash --> pkg_subprocess
   pkg_terminal_bash --> pkg_terminal
   pkg_terminal_bash --> pkg_working_directory
+  pkg_yxspec_remote --> pkg_agent
+  pkg_yxspec_remote --> pkg_session
+  pkg_yxspec_remote --> pkg_storage
+  pkg_yxspec_remote --> pkg_working_directory
+  pkg_yxspec_remote --> pkg_workspace
+  pkg_yxspec_remote --> pkg_yxspec
   pkg_agent_loop --> pkg_agent
   pkg_agent_loop --> pkg_llm
   pkg_agent_loop --> pkg_scope
@@ -1125,6 +1143,25 @@ flowchart TD
   pkg_tool_workflow --> pkg_system_prompt
   pkg_tool_workflow --> pkg_tools
   pkg_tool_workflow --> pkg_workflow
+  pkg_yxspec_api --> pkg_typert_protocol
+  pkg_yxspec_api --> pkg_workspace
+  pkg_yxspec_api --> pkg_yxspec
+  pkg_yxspec_api --> pkg_yxspec_artifact
+  pkg_yxspec_api --> pkg_yxspec_remote
+  pkg_yxspec_dispatch --> pkg_tools
+  pkg_yxspec_dispatch --> pkg_yxspec
+  pkg_yxspec_freeze --> pkg_tools
+  pkg_yxspec_freeze --> pkg_user_approval
+  pkg_yxspec_freeze --> pkg_yxspec
+  pkg_yxspec_gate --> pkg_tools
+  pkg_yxspec_gate --> pkg_yxspec
+  pkg_yxspec_gate --> pkg_yxspec_artifact
+  pkg_yxspec_step --> pkg_agent
+  pkg_yxspec_step --> pkg_tools
+  pkg_yxspec_step --> pkg_working_directory
+  pkg_yxspec_step --> pkg_workspace
+  pkg_yxspec_step --> pkg_yxspec
+  pkg_yxspec_step --> pkg_yxspec_artifact
   pkg_plugin_package_inventory_deepseek --> pkg_agent
   pkg_plugin_package_inventory_deepseek --> pkg_agent_preset_registry
   pkg_plugin_package_inventory_deepseek --> pkg_deepseek_llm_api_extensions
@@ -1716,6 +1753,7 @@ flowchart TD
 | [`client-ui-user-questions`](../packages/client/ui-user-questions) | `client` | — |
 | [`client-ui-workflow-run`](../packages/client/ui-workflow-run) | `client` | — |
 | [`client-ui-workspace`](../packages/client/ui-workspace) | `client` | — |
+| [`client-ui-yxspec`](../packages/client/ui-yxspec) | `client` | — |
 | [`client-web`](../packages/client/web) | `client` | — |
 | [`computer-use`](../packages/computer-use/computer-use) | `computer-use` | — |
 | [`office-kit`](../packages/document/office-kit) | `document` | — |
@@ -1761,6 +1799,7 @@ flowchart TD
 | [`llm-mock-server`](../packages/test-support/llm-mock-server) | `test-support` | — |
 | [`typert-generator`](../packages/typert/generator) | `typert` | — |
 | [`typert-registry`](../packages/typert/registry) | `typert` | — |
+| [`yxspec`](../packages/yxspec/yxspec) | `yxspec` | — |
 | [`atomic-write`](../packages/util/atomic-write) | `util` | [`error`](../packages/util/error) |
 | [`llm`](../packages/llm/llm) | `llm` | [`error`](../packages/util/error) |
 | [`session`](../packages/core/session) | `core` | [`scope`](../packages/core/scope) |
@@ -1779,6 +1818,7 @@ flowchart TD
 | [`win32-process`](../packages/subprocess/win32-process) | `subprocess` | [`error`](../packages/util/error) |
 | [`typert-loader`](../packages/typert/loader) | `typert` | [`typert-registry`](../packages/typert/registry) |
 | [`typert-protocol`](../packages/typert/protocol) | `typert` | [`error`](../packages/util/error) |
+| [`yxspec-artifact`](../packages/yxspec/yxspec-artifact) | `yxspec` | [`yxspec`](../packages/yxspec/yxspec) |
 | [`util-ripgrep`](../packages/util/ripgrep) | `util` | [`subprocess`](../packages/subprocess/subprocess) |
 | [`system-prompt`](../packages/core/system-prompt) | `core` | [`llm`](../packages/llm/llm), [`scope`](../packages/core/scope) |
 | [`skill`](../packages/skill/skill) | `skill` | [`error`](../packages/util/error), [`llm`](../packages/llm/llm), [`scope`](../packages/core/scope) |
@@ -1881,6 +1921,7 @@ flowchart TD
 | [`bash-sandbox`](../packages/shell/bash-sandbox) | `shell` | [`bash-local`](../packages/shell/bash-local), [`sandbox`](../packages/sandbox/sandbox), [`sandbox-policy`](../packages/sandbox/sandbox-policy), [`shell`](../packages/shell/shell) |
 | [`pwsh-sandbox`](../packages/shell/pwsh-sandbox) | `shell` | [`pwsh-local`](../packages/shell/pwsh-local), [`sandbox`](../packages/sandbox/sandbox), [`sandbox-policy`](../packages/sandbox/sandbox-policy), [`shell`](../packages/shell/shell) |
 | [`terminal-bash`](../packages/terminal/terminal-bash) | `terminal` | [`agent`](../packages/core/agent), [`sandbox`](../packages/sandbox/sandbox), [`sandbox-policy`](../packages/sandbox/sandbox-policy), [`session`](../packages/core/session), [`subprocess`](../packages/subprocess/subprocess), [`terminal`](../packages/terminal/terminal), [`working-directory`](../packages/session/working-directory) |
+| [`yxspec-remote`](../packages/yxspec/yxspec-remote) | `yxspec` | [`agent`](../packages/core/agent), [`session`](../packages/core/session), [`storage`](../packages/storage/storage), [`working-directory`](../packages/session/working-directory), [`workspace`](../packages/workspace/workspace), [`yxspec`](../packages/yxspec/yxspec) |
 | [`agent-loop`](../packages/core/agent-loop) | `core` | [`agent`](../packages/core/agent), [`llm`](../packages/llm/llm), [`scope`](../packages/core/scope), [`session`](../packages/core/session), [`session-persistence`](../packages/session/session-persistence), [`session-projection`](../packages/session/session-projection), [`system-prompt`](../packages/core/system-prompt), [`tools`](../packages/core/tools) |
 | [`agent-tool-presentation`](../packages/core/agent-tool-presentation) | `core` | [`tools`](../packages/core/tools) |
 | [`tool-executor-native`](../packages/core/tool-executor-native) | `core` | [`tools`](../packages/core/tools) |
@@ -1931,6 +1972,11 @@ flowchart TD
 | [`llm-replay`](../packages/test-support/llm-replay) | `test-support` | [`compaction`](../packages/compaction/compaction), [`deepseek-llm-api-extensions`](../packages/llm/deepseek-llm-api-extensions), [`llm`](../packages/llm/llm), [`session`](../packages/core/session) |
 | [`tool-testkit`](../packages/test-support/tool-testkit) | `test-support` | [`llm`](../packages/llm/llm), [`tools`](../packages/core/tools) |
 | [`tool-workflow`](../packages/workflow/tool-workflow) | `workflow` | [`agent`](../packages/core/agent), [`jobs`](../packages/jobs/jobs), [`llm`](../packages/llm/llm), [`session`](../packages/core/session), [`system-prompt`](../packages/core/system-prompt), [`tools`](../packages/core/tools), [`workflow`](../packages/workflow/workflow) |
+| [`yxspec-api`](../packages/yxspec/yxspec-api) | `yxspec` | [`typert-protocol`](../packages/typert/protocol), [`workspace`](../packages/workspace/workspace), [`yxspec`](../packages/yxspec/yxspec), [`yxspec-artifact`](../packages/yxspec/yxspec-artifact), [`yxspec-remote`](../packages/yxspec/yxspec-remote) |
+| [`yxspec-dispatch`](../packages/yxspec/yxspec-dispatch) | `yxspec` | [`tools`](../packages/core/tools), [`yxspec`](../packages/yxspec/yxspec) |
+| [`yxspec-freeze`](../packages/yxspec/yxspec-freeze) | `yxspec` | [`tools`](../packages/core/tools), [`user-approval`](../packages/interaction/user-approval), [`yxspec`](../packages/yxspec/yxspec) |
+| [`yxspec-gate`](../packages/yxspec/yxspec-gate) | `yxspec` | [`tools`](../packages/core/tools), [`yxspec`](../packages/yxspec/yxspec), [`yxspec-artifact`](../packages/yxspec/yxspec-artifact) |
+| [`yxspec-step`](../packages/yxspec/yxspec-step) | `yxspec` | [`agent`](../packages/core/agent), [`tools`](../packages/core/tools), [`working-directory`](../packages/session/working-directory), [`workspace`](../packages/workspace/workspace), [`yxspec`](../packages/yxspec/yxspec), [`yxspec-artifact`](../packages/yxspec/yxspec-artifact) |
 | [`plugin-package-inventory-deepseek`](../packages/llm/plugin-package-inventory-deepseek) | `llm` | [`agent`](../packages/core/agent), [`agent-preset-registry`](../packages/preset/agent-preset-registry), [`deepseek-llm-api-extensions`](../packages/llm/deepseek-llm-api-extensions), [`session`](../packages/core/session) |
 | [`token-meter`](../packages/llm/token-meter) | `llm` | [`compaction`](../packages/compaction/compaction), [`compaction-image-offload`](../packages/compaction/compaction-image-offload), [`llm`](../packages/llm/llm), [`llm-retry`](../packages/llm/llm-retry), [`session`](../packages/core/session), [`session-projection`](../packages/session/session-projection) |
 | [`session-query`](../packages/session-query/session-query) | `session-query` | [`llm`](../packages/llm/llm), [`session`](../packages/core/session), [`session-persistence`](../packages/session/session-persistence), [`session-projection`](../packages/session/session-projection), [`session-projection-cache`](../packages/session/session-projection-cache), [`session-title`](../packages/session/session-title), [`tool-todo`](../packages/todo/tool-todo) |

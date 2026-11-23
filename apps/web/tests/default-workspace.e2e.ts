@@ -36,8 +36,8 @@ describe.skipIf(MODE === 'record')('web e2e: default Workspace', () => {
         await input.waitFor()
         // Language-neutral on disk, localized in the hero chip. The chip's
         // aria-label is its fixed call to action, so the label is its text.
-        await page.getByRole('button', { name: 'Choose workspace', exact: true })
-          .getByText('Default workspace', { exact: true }).waitFor()
+        await page.getByRole('button', { name: 'Choose project', exact: true })
+          .getByText('Default project', { exact: true }).waitFor()
         expect(scaffold.ctx.workspaceRegistry.list()).toHaveLength(1)
         const initialSession = scaffold.ctx.sessions.list()[0]!
         expect(scaffold.ctx.sessions.list()).toHaveLength(1)
@@ -52,11 +52,13 @@ describe.skipIf(MODE === 'record')('web e2e: default Workspace', () => {
         const sessionId = await settled
         const workspace = scaffold.ctx.workspaceRegistry.list()[0]!
         expect(workspace.title).toBe('default-workspace')
-        expect(workspace.path).toBe(join(scaffold.workspaceCwd, 'Documents', 'deepseek-harness', 'default-workspace'))
-        expect((await stat(workspace.path)).isDirectory()).toBe(true)
+        // The default Workspace is created over a real directory, so it declares a root.
+        const workspacePath = workspace.path!
+        expect(workspacePath).toBe(join(scaffold.workspaceCwd, 'Documents', 'deepseek-harness', 'default-workspace'))
+        expect((await stat(workspacePath)).isDirectory()).toBe(true)
         expect(workspace.sessionIds).toContain(sessionId)
-        expect(scaffold.ctx.sessions.get(sessionId)?.header.cwd).toBe(workspace.path)
-        await assertFinalWorkspaceSnapshot(fileURLToPath(new URL('../../../snapshots/web/default-workspace', import.meta.url)), workspace.path)
+        expect(scaffold.ctx.sessions.get(sessionId)?.header.cwd).toBe(workspacePath)
+        await assertFinalWorkspaceSnapshot(fileURLToPath(new URL('../../../snapshots/web/default-workspace', import.meta.url)), workspacePath)
         await page.getByText('DONE', { exact: true }).waitFor()
         await compareOrRefreshGolden(EXPECTED, await captureStableAria(page, '[class*="centerCol"]', scaffold.workspaceCwd), MODE)
         expect(tripwire.pageErrors).toEqual([])
@@ -81,10 +83,10 @@ describe.skipIf(MODE === 'record')('web e2e: default Workspace', () => {
         isMobile: true, hasTouch: true,
       })
       await page.goto(scaffold.authenticatedUrl)
-      const trigger = page.getByRole('button', { name: 'Choose workspace', exact: true })
-      await trigger.getByText('Default workspace', { exact: true }).waitFor()
+      const trigger = page.getByRole('button', { name: 'Choose project', exact: true })
+      await trigger.getByText('Default project', { exact: true }).waitFor()
       await trigger.tap()
-      const menu = page.getByRole('menu').filter({ has: page.getByRole('menuitem', { name: 'Default workspace', exact: true }) })
+      const menu = page.getByRole('menu').filter({ has: page.getByRole('menuitem', { name: 'Default project', exact: true }) })
       await menu.waitFor({ state: 'visible', timeout: 10_000 })
       expect(await trigger.getAttribute('aria-expanded')).toBe('true')
       expect(await trigger.evaluate(node => node.style.anchorName)).toBe(await menu.evaluate(node => node.style.positionAnchor))
@@ -110,15 +112,15 @@ describe.skipIf(MODE === 'record')('web e2e: default Workspace', () => {
       try {
         await page.goto(scaffold.authenticatedUrl)
         const input = page.locator('[data-composer-input][contenteditable="true"]').first()
-        const notice = page.getByRole('alert').filter({ hasText: '无法创建默认工作区' })
+        const notice = page.getByRole('alert').filter({ hasText: '无法创建默认项目' })
         await notice.waitFor()
         expect(scaffold.ctx.workspaceRegistry.list()).toEqual([])
         expect(scaffold.ctx.sessions.list()).toEqual([])
         await compareOrRefreshGolden(FAILURE_EXPECTED, await notice.ariaSnapshot(), MODE)
         expect(await page.getByRole('dialog').count()).toBe(0)
         expect(await input.count()).toBe(0)
-        await page.getByRole('button', { name: '选择工作区', exact: true }).click()
-        const picker = page.getByRole('dialog', { name: '选择工作区目录' })
+        await page.getByRole('button', { name: '选择项目', exact: true }).click()
+        const picker = page.getByRole('dialog', { name: '选择项目目录' })
         await picker.waitFor()
         await picker.getByRole('button', { name: '编辑路径', exact: true }).click()
         await picker.getByRole('textbox', { name: '编辑路径' }).fill(chosen)
@@ -152,8 +154,8 @@ describe.skipIf(MODE === 'record')('web e2e: default Workspace', () => {
       const attempted = page.waitForResponse(response => response.url().includes('/api/workspace/initializeDefault'))
       await page.goto(scaffold.authenticatedUrl)
       expect((await attempted).ok()).toBe(true)
-      await page.getByRole('button', { name: 'Choose workspace', exact: true }).waitFor()
-      expect(await page.getByRole('alert').filter({ hasText: 'Unable to create default workspace' }).count()).toBe(0)
+      await page.getByRole('button', { name: 'Choose project', exact: true }).waitFor()
+      expect(await page.getByRole('alert').filter({ hasText: 'Unable to create default project' }).count()).toBe(0)
       expect(await page.locator('[data-composer-input][contenteditable="true"]').count()).toBe(0)
       expect(scaffold.ctx.workspaceRegistry.list()).toEqual([])
       expect(scaffold.ctx.sessions.list()).toEqual([])

@@ -10,7 +10,7 @@ import {
   fixtureUserPrompts, launchWebScaffold, seedSession, watchConsole, webSnapshotMode,
   type WebScaffold,
 } from './scaffold.ts'
-import { connectFreshWorkspace, fullscreenBox, newEnglishPage, saveFailureShot } from './support.ts'
+import { connectFreshWorkspace, fullscreenBox, newEnglishPage, saveFailureShot, startSessionIn } from './support.ts'
 
 const SNAPSHOT_DIR = fileURLToPath(new URL('../../../snapshots/web/details-session-lifecycle', import.meta.url))
 const HANDLES_EXPECTED = join(SNAPSHOT_DIR, 'handles.expected.md')
@@ -280,7 +280,9 @@ describe.skipIf(MODE === 'record')('web e2e: details panel follows the current S
     await expect.poll(() => detailsTrack(page), { timeout: 5_000 }).toBe(0)
     expect(await page.getByText('Details', { exact: true }).isVisible()).toBe(false)
 
-    await page.getByRole('button', { name: /^(?:New session|新.*会话)$/ }).last().click()
+    // The shell owns no New Session control: the project row's action is the
+    // entry, and this scenario's project is the one `connectFreshWorkspace` staged.
+    await startSessionIn(page, 'workspace')
     await page.getByText('Into the Unknown', { exact: false }).waitFor({ timeout: 15_000 })
     await expect.poll(() => detailsTrack(page), { timeout: 5_000 }).toBe(0)
     expect(await page.getByText('Details', { exact: true }).isVisible()).toBe(false)
