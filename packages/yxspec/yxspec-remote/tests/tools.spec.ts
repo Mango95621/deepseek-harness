@@ -4,15 +4,17 @@
  * These tools are the only path an agent has to a build server, which is the
  * point: a build is a tool call, so it passes through the same `tools` pipeline
  * the YXSpec gate hooks, and a stage gate can require a green remote build. What
- * these specs pin is the resolution of "which project" and the shape each tool
- * hands back — not the transport, which `ssh.spec.ts` covers directly.
+ * these specs pin is the resolution of "which project", the argument shaping
+ * each tool does before the service sees a call, and the shape each tool hands
+ * back — not the transport, which `ssh.spec.ts` covers directly.
  * @module
  */
 
 import { afterEach, describe, expect, it } from 'vitest'
-import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { Readable } from 'node:stream'
 import { brandString } from '@deepseek-ai/dsh-brand'
 import { Context } from '@deepseek-ai/cordis'
 import type { ToolCallId } from '@deepseek-ai/dsh-llm'
@@ -34,19 +36,57 @@ afterEach(async () => {
   cleanups.length = 0
 })
 
-/** The smallest subprocess face these specs need: everything succeeds, nothing runs. */
-function quietSubprocess() {
+/**
+ * The smallest subprocess face these specs need.
+ *
+ * Every call succeeds; every spawn echoes a scripted stdout, so a build reads
+ * as green and a revision read (when a declaration asks for one) returns a
+ * plausible short line. A fetch spawn gets a live piped stdout ending
+ * immediately, which is the shape the archive stream reads; `fetchFailure`
+ * turns that spawn red to script a failed transfer. The transport is not what
+ * is under test here.
+ * @param options.fetchFailure - exit code and stderr for the fetch spawn.
+ */
+function quietSubprocess(options: { fetchFailure?: { exitCode: number; stderr: string } } = {}) {
   return {
     spawns: [] as SubprocessSpawnSpec[],
     resolveExecutable: async (command: string) => `/usr/bin/${command}`,
-    spawn(_spec: SubprocessSpawnSpec): SubprocessHandle {
+    spawn(spec: SubprocessSpawnSpec): SubprocessHandle {
+      // The fetch's spawn carries `stdout: 'pipe'`; the archive arrives on that
+      // stream, so the handle exposes a readable rather than a collected reply.
+      if (spec.stdio.stdout === 'pipe') {
+        const failed = options.fetchFailure
+        const stdout = new Readable({ read() {} })
+        stdout.push(null)
+        return {
+          stdin: undefined,
+          stdout: stdout as never,
+          stderr: undefined,
+          control: undefined,
+          collected: {
+            // Absent rather than present-and-undefined: the handle type declares each reader as
+            // optional under exactOptionalPropertyTypes, so a stream this double does not
+            // collect must not appear as a key at all.
+            stderr: {
+              readFrom: () => ({
+                text: failed?.stderr ?? '',
+                nextOffset: (failed?.stderr ?? '').length,
+                lossy: false,
+              }),
+            },
+          },
+          done: Promise.resolve({ exitCode: failed?.exitCode ?? 0, signal: null }),
+          terminate: () => undefined,
+          waitForExit: async () => true,
+        } satisfies SubprocessHandle
+      }
       return {
         stdin: undefined,
         stdout: undefined,
         stderr: undefined,
         control: undefined,
         collected: {
-          stdout: { readFrom: () => ({ text: '', nextOffset: 0, lossy: false }) },
+          stdout: { readFrom: () => ({ text: '9f3c1a2b\n', nextOffset: 9, lossy: false }) },
           stderr: { readFrom: () => ({ text: '', nextOffset: 0, lossy: false }) },
         },
         done: Promise.resolve({ exitCode: 0, signal: null }),
@@ -72,7 +112,7 @@ interface Harness {
  * @param options.cwdFromPrimaryRoot - report the project's own first root as the
  *   Session cwd, which is the relationship the resolution relies on.
  * @param options.projects - the projects the registry knows about.
- * @param options.declaresYxspec - write the project's `project/config/yxspec.json`
+ * @param options.declaresYxspec - write the project's `yxspec.json`
  *   marker; false to prove the tools stay hidden in a project that declares none.
  * @param options.noWorkingDirectory - mount no `workingDirectory`, so the tools'
  *   plugin row has an unsatisfied injection and never registers.
@@ -83,6 +123,7 @@ async function harness(options: {
   projects?: Array<{ id: string; roots: string[]; title?: string }>
   declaresYxspec?: boolean
   noWorkingDirectory?: boolean
+  fetchFailure?: { exitCode: number; stderr: string }
 } = {}): Promise<Harness> {
   const pool = new MemoryMediaPool()
   const ctx = new Context()
@@ -102,8 +143,7 @@ async function harness(options: {
   // declares a YXSpec process, and this is that declaration. Written before the
   // plugin mounts because the guard reads it per step.
   if (options.declaresYxspec !== false) {
-    await mkdir(join(projectRoot, 'project', 'config'), { recursive: true })
-    await writeFile(join(projectRoot, 'project', 'config', 'yxspec.json'), '{}', 'utf8')
+    await writeFile(join(projectRoot, 'yxspec.json'), '{}', 'utf8')
   }
 
   const workspaceId = 'ws-tools-1'
@@ -124,7 +164,9 @@ async function harness(options: {
     ctx.provide('workingDirectory', { get: () => cwd } as never)
   }
 
-  const subprocess = quietSubprocess()
+  const subprocess = quietSubprocess({
+    ...options.fetchFailure === undefined ? {} : { fetchFailure: options.fetchFailure },
+  })
   ctx.provide('subprocess', subprocess as never)
   const fiber = await ctx.plugin(yxspecRemote)
   cleanups.push(() => fiber.dispose())
@@ -234,8 +276,8 @@ describe('remote_server_declare', () => {
       workspaceId,
       serverId: 'aosp-builder',
       destination: 'ci@build.internal',
-      baseDirectory: '/srv/builds',
-      recipes: [{ id: 'ninja-full', command: 'ninja -C {cwd}/out all' }],
+      projectDirectory: '/srv/checkout',
+      recipes: [{ id: 'ninja-full', command: 'ninja -C {out} all' }],
     })
 
     expect(value).toEqual({
@@ -243,9 +285,18 @@ describe('remote_server_declare', () => {
     })
     const stored = await ctx.yxspecRemote.server(workspaceId, 'aosp-builder')
     // The declared label falls back to the id, and the timeout to a build-sized
-    // default, so a caller may name only what it actually cares about.
-    expect(stored).toMatchObject({ title: 'aosp-builder', timeoutMs: 900_000, transport: 'ssh' })
+    // default, so a caller may name only what it actually cares about. The
+    // recipe's output directory stays unset, meaning the per-run default applies.
+    expect(stored).toMatchObject({
+      title: 'aosp-builder',
+      timeoutMs: 900_000,
+      transport: 'ssh',
+      projectDirectory: '/srv/checkout',
+      recipes: { 'ninja-full': { command: 'ninja -C {out} all' } },
+    })
+    expect(stored?.recipes['ninja-full']?.outputDirectory).toBeUndefined()
     expect(stored?.sshExecutable).toBeUndefined()
+    expect(stored?.captureRevision).toBeUndefined()
   })
 
   it('keeps the fields a caller does supply', async () => {
@@ -254,16 +305,26 @@ describe('remote_server_declare', () => {
       workspaceId,
       serverId: 'b',
       destination: 'host',
-      baseDirectory: '/srv',
-      recipes: [{ id: 'r', command: 'true' }],
+      projectDirectory: '/srv/tree',
+      captureRevision: true,
+      recipes: [{ id: 'r', command: 'true', outputDirectory: '/srv/tree/products' }],
       title: '构建机',
       timeoutMs: 1_000,
       sshExecutable: '/opt/ssh',
     })
     // A blank label would be indistinguishable from an absent one, so only a
-    // non-empty string replaces the id.
+    // non-empty string replaces the id; the revision capture is a deliberate
+    // opt-in that costs a walk of the tree, and the recipe carries its own
+    // product directory because a whole build and a module build differ.
     const stored = await ctx.yxspecRemote.server(workspaceId, 'b')
-    expect(stored).toMatchObject({ title: '构建机', timeoutMs: 1_000, sshExecutable: '/opt/ssh' })
+    expect(stored).toMatchObject({
+      title: '构建机',
+      timeoutMs: 1_000,
+      sshExecutable: '/opt/ssh',
+      projectDirectory: '/srv/tree',
+      captureRevision: true,
+      recipes: { r: { command: 'true', outputDirectory: '/srv/tree/products' } },
+    })
   })
 
   it('ignores a blank optional string rather than storing it', async () => {
@@ -272,14 +333,34 @@ describe('remote_server_declare', () => {
       workspaceId,
       serverId: 'b',
       destination: 'host',
-      baseDirectory: '/srv',
-      recipes: [{ id: 'r', command: 'true' }],
+      projectDirectory: '/srv/tree',
+      recipes: [{ id: 'r', command: 'true', outputDirectory: '   ' }],
       title: '',
       sshExecutable: '',
     })
     const stored = await ctx.yxspecRemote.server(workspaceId, 'b')
     expect(stored?.title).toBe('b')
+    expect(stored?.recipes.r?.outputDirectory).toBeUndefined()
     expect(stored?.sshExecutable).toBeUndefined()
+  })
+
+  it('keeps two recipes with two different output directories', async () => {
+    const { ctx, workspaceId } = await harness()
+    // A whole build and a module build of one tree write to different places,
+    // which is why the directory belongs to the recipe.
+    await invoke(ctx, 'remote_server_declare', {
+      workspaceId,
+      serverId: 'b',
+      destination: 'host',
+      projectDirectory: '/srv/tree',
+      recipes: [
+        { id: 'full', command: 'ninja all', outputDirectory: '/srv/out/full' },
+        { id: 'module', command: 'ninja system_module', outputDirectory: '/srv/out/module' },
+      ],
+    })
+    const stored = await ctx.yxspecRemote.server(workspaceId, 'b')
+    expect(stored?.recipes.full).toEqual({ command: 'ninja all', outputDirectory: '/srv/out/full' })
+    expect(stored?.recipes.module).toEqual({ command: 'ninja system_module', outputDirectory: '/srv/out/module' })
   })
 
   it('refuses a recipe list the declaration could never run', async () => {
@@ -288,12 +369,15 @@ describe('remote_server_declare', () => {
       workspaceId,
       serverId: 'b',
       destination: 'host',
-      baseDirectory: '/srv',
+      projectDirectory: '/srv/tree',
       recipes: [{ id: '  ', command: 'true' }],
     })
     // A malformed entry fails the whole declaration rather than dropping one
     // recipe a stage gate might have been told to require.
-    expect(value).toEqual({ ok: false, error: 'recipes must be a non-empty array of { id, command }' })
+    expect(value).toEqual({
+      ok: false,
+      error: 'recipes must be a non-empty array of { id, command, outputDirectory? }',
+    })
     expect(await ctx.yxspecRemote.list(workspaceId)).toEqual([])
   })
 
@@ -302,22 +386,58 @@ describe('remote_server_declare', () => {
     // The schema types `recipes` as an array but places no length floor on it, so an empty
     // one reaches the handler — and a server with no recipes is one a run can never target.
     const value = await invoke(ctx, 'remote_server_declare', {
-      workspaceId, serverId: 'b', destination: 'host', baseDirectory: '/srv', recipes: [],
+      workspaceId, serverId: 'b', destination: 'host', projectDirectory: '/srv/tree', recipes: [],
     })
-    expect(value).toEqual({ ok: false, error: 'recipes must be a non-empty array of { id, command }' })
+    expect(value).toEqual({
+      ok: false,
+      error: 'recipes must be a non-empty array of { id, command, outputDirectory? }',
+    })
     expect(await ctx.yxspecRemote.list(workspaceId)).toEqual([])
   })
 
   it('refuses a blank command for the same reason', async () => {
     const { ctx, workspaceId } = await harness()
+    // A recipe id naming no command would make the run-time "known: ..." listing
+    // name a recipe a run could ask for and the seam would refuse.
     const value = await invoke(ctx, 'remote_server_declare', {
       workspaceId,
       serverId: 'b',
       destination: 'host',
-      baseDirectory: '/srv',
+      projectDirectory: '/srv/tree',
       recipes: [{ id: 'r', command: '   ' }],
     })
     expect(value.ok).toBe(false)
+    expect(await ctx.yxspecRemote.list(workspaceId)).toEqual([])
+  })
+
+  it('surfaces a declaration the seam refuses as an error naming the field', async () => {
+    const { ctx, workspaceId } = await harness()
+    // A relative project directory names a place the run could not `cd` into
+    // deterministically. The tool layer does not restate the seam's validation:
+    // the refusal propagates and names the field, and nothing is stored.
+    await expect(invoke(ctx, 'remote_server_declare', {
+      workspaceId,
+      serverId: 'b',
+      destination: 'host',
+      projectDirectory: 'srv/tree',
+      recipes: [{ id: 'r', command: 'true' }],
+    })).rejects.toThrow(/projectDirectory must be an absolute server path/)
+    expect(await ctx.yxspecRemote.list(workspaceId)).toEqual([])
+  })
+
+  it('surfaces a relative recipe directory as an error naming the recipe', async () => {
+    const { ctx, workspaceId } = await harness()
+    // The tool layer passes a typed directory through for the seam's own
+    // absolute-path check, because it is the seam that knows which recipe
+    // declared it — the refusal names the recipe the operator must fix.
+    await expect(invoke(ctx, 'remote_server_declare', {
+      workspaceId,
+      serverId: 'b',
+      destination: 'host',
+      projectDirectory: '/srv/tree',
+      recipes: [{ id: 'ninja-full', command: 'ninja', outputDirectory: 'srv/out' }],
+    })).rejects.toThrow(/recipe 'ninja-full' outputDirectory must be an absolute server path/)
+    expect(await ctx.yxspecRemote.list(workspaceId)).toEqual([])
   })
 
   it('refuses a declaration when no project could be resolved', async () => {
@@ -328,7 +448,7 @@ describe('remote_server_declare', () => {
     const value = await invokeDirect(ctx, 'remote_server_declare', {
       serverId: 'b',
       destination: 'host',
-      baseDirectory: '/srv',
+      projectDirectory: '/srv/tree',
       recipes: [{ id: 'r', command: 'true' }],
     })
     expect(value).toEqual({ ok: false, error: 'no active project' })
@@ -342,23 +462,46 @@ describe('remote_server_list', () => {
       workspaceId,
       serverId: 'aosp-builder',
       destination: 'ci@build.internal',
-      baseDirectory: '/srv/builds',
-      recipes: [{ id: 'ninja-full', command: 'ninja' }, { id: 'ctest', command: 'ctest' }],
+      projectDirectory: '/srv/checkout',
+      recipes: [
+        { id: 'ninja-full', command: 'ninja', outputDirectory: '/srv/out/full' },
+        { id: 'ctest', command: 'ctest' },
+      ],
+    })
+    await invoke(ctx, 'remote_server_declare', {
+      workspaceId,
+      serverId: 'default-out',
+      destination: 'ci@build2.internal',
+      projectDirectory: '/srv/tree2',
+      recipes: [{ id: 'r', command: 'true' }],
     })
 
     const value = await invoke(ctx, 'remote_server_list', { workspaceId })
     expect(value.ok).toBe(true)
-    expect(value.servers).toEqual([{
-      id: 'aosp-builder',
-      title: 'aosp-builder',
-      destination: 'ci@build.internal',
-      baseDirectory: '/srv/builds',
-      recipes: ['ninja-full', 'ctest'],
-      // A server that has never been probed reports the absence explicitly, so
-      // a picker does not have to distinguish "absent" from "unset".
-      lastProbeAt: null,
-      lastPlatform: null,
-    }])
+    // The listing names recipes only: each recipe's own directory is where its
+    // products go, so a server-level one would be a fact about nothing.
+    expect(value.servers).toEqual([
+      {
+        id: 'aosp-builder',
+        title: 'aosp-builder',
+        destination: 'ci@build.internal',
+        projectDirectory: '/srv/checkout',
+        recipes: ['ninja-full', 'ctest'],
+        // A server that has never been probed reports the absence explicitly, so
+        // a picker does not have to distinguish "absent" from "unset".
+        lastProbeAt: null,
+        lastPlatform: null,
+      },
+      {
+        id: 'default-out',
+        title: 'default-out',
+        destination: 'ci@build2.internal',
+        projectDirectory: '/srv/tree2',
+        recipes: ['r'],
+        lastProbeAt: null,
+        lastPlatform: null,
+      },
+    ])
   })
 
   it('reports a blank list for a project that declared nothing', async () => {
@@ -383,20 +526,24 @@ describe('remote_build', () => {
       workspaceId,
       serverId: 'builder',
       destination: 'host',
-      baseDirectory: '/srv/builds',
-      recipes: [{ id: 'ninja-full', command: 'ninja -C {cwd} all' }],
+      projectDirectory: '/srv/checkout',
+      recipes: [{ id: 'ninja-full', command: 'ninja -C {out} all' }],
     })
 
     const value = await invoke(ctx, 'remote_build', {
-      workspaceId, serverId: 'builder', recipe: 'ninja-full', push: false, extraArgs: ' -j8 ',
+      workspaceId, serverId: 'builder', recipe: 'ninja-full', extraArgs: ' -j8 ',
     })
     expect(value.ok).toBe(true)
     expect(value.exitCode).toBe(0)
     expect(value.workspaceId).toBe(workspaceId)
     expect(value.command).toContain('-j8')
+    // The run names the directories it executed between, because the record is
+    // the evidence a reviewer reads.
+    expect(value.projectDirectory).toBe('/srv/checkout')
+    expect(value.outputDirectory).toBe('/srv/checkout/out')
     expect(value.logSha256).toMatch(/^[0-9a-f]{64}$/)
-    // A skipped push leaves no tree digest, because nothing was uploaded.
-    expect(value.treeDigest).toBeUndefined()
+    // No fetch was requested, so no products came back.
+    expect(value.fetched).toBeUndefined()
   })
 
   it('reports a failing build as data with ok false', async () => {
@@ -405,44 +552,100 @@ describe('remote_build', () => {
       workspaceId,
       serverId: 'builder',
       destination: 'host',
-      baseDirectory: '/srv/builds',
+      projectDirectory: '/srv/checkout',
       recipes: [{ id: 'ninja-full', command: 'ninja' }],
     })
-    // Disposes the declaration's own recipe by asking for a push and then a
-    // failure: the transport is not what is under test here, the tool's `ok`.
-    const value = await invoke(ctx, 'remote_build', {
-      workspaceId, serverId: 'builder', recipe: 'ninja-full', push: false,
-    })
-    expect(value.ok).toBe(true)
-
-    // An undeclared recipe still throws, because that is a caller mistake rather
-    // than a build result.
+    // The subprocess face reports every spawn green; a red run needs a refusal
+    // instead, and an undeclared recipe still throws, because that is a caller
+    // mistake rather than a build result.
     await expect(invoke(ctx, 'remote_build', { workspaceId, serverId: 'builder', recipe: 'ghost' }))
       .rejects.toThrow(/declares no recipe 'ghost'/)
   })
 
-  it('passes an explicit source directory through and omits a blank one', async () => {
-    const { ctx, workspaceId, projectRoot } = await harness()
+  it('omits optional run arguments the caller did not set', async () => {
+    const { ctx, workspaceId } = await harness()
     await invoke(ctx, 'remote_server_declare', {
       workspaceId,
       serverId: 'builder',
       destination: 'host',
-      baseDirectory: '/srv/builds',
-      recipes: [{ id: 'ninja-full', command: 'ninja' }],
+      projectDirectory: '/srv/checkout',
+      recipes: [{ id: 'r', command: 'true' }],
     })
-
-    const nested = join(projectRoot, 'sub')
-    const explicit = await invoke(ctx, 'remote_build', {
-      workspaceId, serverId: 'builder', recipe: 'ninja-full', push: false, sourceDirectory: nested,
-    })
-    expect(explicit.ok).toBe(true)
-
-    // A blank string is "not supplied" rather than a directory named nothing, so the run falls
-    // back to the project's own primary root instead of failing on an empty path.
     const blank = await invoke(ctx, 'remote_build', {
-      workspaceId, serverId: 'builder', recipe: 'ninja-full', push: false, sourceDirectory: '',
+      workspaceId, serverId: 'builder', recipe: 'r', extraArgs: '', fetchInto: '',
     })
+    // A blank string is "not supplied" rather than an argument named nothing.
     expect(blank.ok).toBe(true)
+    const stored = await ctx.yxspecRemote.server(workspaceId, 'builder')
+    expect(stored).toBeDefined()
+  })
+
+  it('passes a requested fetch through to the run', async () => {
+    const { ctx, workspaceId } = await harness()
+    await invoke(ctx, 'remote_server_declare', {
+      workspaceId,
+      serverId: 'builder',
+      destination: 'host',
+      projectDirectory: '/srv/checkout',
+      recipes: [{ id: 'r', command: 'true' }],
+    })
+    // The double's extraction is not scripted here, so a product that did not
+    // unpack reads as zero bytes; the projection to plain JSON is the point.
+    const value = await invoke(ctx, 'remote_build', {
+      workspaceId,
+      serverId: 'builder',
+      recipe: 'r',
+      fetch: ['system.img'],
+      fetchInto: '/tmp/fetch-here',
+    })
+    expect(value.ok).toBe(true)
+    expect(value.fetched).toEqual([
+      { path: 'system.img', localPath: expect.any(String), bytes: 0, error: null },
+    ])
+  })
+
+  it('filters empty fetch entries instead of passing them through', async () => {
+    const { ctx, workspaceId } = await harness()
+    await invoke(ctx, 'remote_server_declare', {
+      workspaceId,
+      serverId: 'builder',
+      destination: 'host',
+      projectDirectory: '/srv/checkout',
+      recipes: [{ id: 'r', command: 'true' }],
+    })
+    // Empty strings are not paths; passing them on would have the seam refuse
+    // the whole call over an entry the caller never meant as one.
+    const value = await invoke(ctx, 'remote_build', {
+      workspaceId,
+      serverId: 'builder',
+      recipe: 'r',
+      fetch: [''],
+    })
+    expect(value.ok).toBe(true)
+    expect(value.fetched).toBeUndefined()
+  })
+
+  it('reports a failed transfer per requested path while the build verdict stands', async () => {
+    const { ctx, workspaceId } = await harness({
+      fetchFailure: { exitCode: 255, stderr: 'tar: system.img: Cannot open\n' },
+    })
+    await invoke(ctx, 'remote_server_declare', {
+      workspaceId,
+      serverId: 'builder',
+      destination: 'host',
+      projectDirectory: '/srv/checkout',
+      recipes: [{ id: 'r', command: 'true' }],
+    })
+    const value = await invoke(ctx, 'remote_build', {
+      workspaceId, serverId: 'builder', recipe: 'r', fetch: ['system.img'], fetchInto: '/tmp/fetch-here',
+    })
+    // The build already happened and is green; the products are an extra, and
+    // their failure is data the caller reports alongside the verdict.
+    expect(value.ok).toBe(true)
+    expect(value.exitCode).toBe(0)
+    expect(value.fetched).toEqual([
+      { path: 'system.img', localPath: '', bytes: 0, error: 'tar: system.img: Cannot open' },
+    ])
   })
 
   it('refuses a build when no project could be resolved', async () => {

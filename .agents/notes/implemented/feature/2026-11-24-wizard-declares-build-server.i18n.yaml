@@ -1,0 +1,19 @@
+# Bilingual-pair consistency record for 2026-11-24-wizard-declares-build-server.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write .agents/notes/implemented/feature/2026-11-24-wizard-declares-build-server.md
+/agent-note-the-onboarding-wizard-declares-build-servers-through-the-service-that-owns-them:
+  en: 8c83412322720c86
+  zh: 7a2f5f784811825c
+/agent-note-the-onboarding-wizard-declares-build-servers-through-the-service-that-owns-them/problem:
+  en: 6902dd4cd9496cd4
+  zh: 13cec1264d5d2ebb
+/agent-note-the-onboarding-wizard-declares-build-servers-through-the-service-that-owns-them/decision:
+  en: e41686a6da68b1f5
+  zh: 78d8a9cd23395660
+/agent-note-the-onboarding-wizard-declares-build-servers-through-the-service-that-owns-them/alternatives-considered:
+  en: 9bb720af84f3256b
+  zh: 7ad2e267b4166398
+/agent-note-the-onboarding-wizard-declares-build-servers-through-the-service-that-owns-them/consequences:
+  en: ad446eadcc858771
+  zh: 3f01e2c73277e7e3

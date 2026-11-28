@@ -85,7 +85,7 @@ function landedAmong(present: readonly string[]): (path: string) => Promise<bool
 describe('identity resolution', () => {
   it('prefers the deployment config over the project file', async () => {
     const root = await workspace()
-    await writeJson(join(root, 'project', 'config', 'yxspec.json'), {
+    await writeJson(join(root, 'yxspec.json'), {
       spec_id: 'from-file',
       project_name: 'File Project',
       customer: 'File Customer',
@@ -112,7 +112,7 @@ describe('identity resolution', () => {
     const root = await workspace()
     // A numeric `spec_id` is not text, so that one field alone must fall through
     // to the placeholder while its neighbours come from the file.
-    await writeJson(join(root, 'project', 'config', 'yxspec.json'), {
+    await writeJson(join(root, 'yxspec.json'), {
       spec_id: 5,
       project_name: 'File Project',
       customer: 'File Customer',
@@ -128,9 +128,28 @@ describe('identity resolution', () => {
     })
   })
 
+  it('seeds identity from the declaration under the older nested location', async () => {
+    // A project written before the file moved still states its identity; the seed has to
+    // find it, or a migratable project would silently report the placeholder set.
+    const root = await workspace()
+    await writeJson(join(root, 'project', 'config', 'yxspec.json'), { spec_id: 'nested' })
+    const { service } = await mount(root)
+    expect(service.spec.specId).toBe('nested')
+  })
+
+  it('prefers the root-level declaration over the nested one', async () => {
+    // Both present is the mid-migration state, and the primary location is what the
+    // deployment is moving toward: reading the stale copy would pin the old answer.
+    const root = await workspace()
+    await writeJson(join(root, 'yxspec.json'), { spec_id: 'at-root' })
+    await writeJson(join(root, 'project', 'config', 'yxspec.json'), { spec_id: 'nested' })
+    const { service } = await mount(root)
+    expect(service.spec.specId).toBe('at-root')
+  })
+
   it('treats an empty file field as absent rather than as a name', async () => {
     const root = await workspace()
-    await writeJson(join(root, 'project', 'config', 'yxspec.json'), {
+    await writeJson(join(root, 'yxspec.json'), {
       project_name: '',
       customer: 'File Customer',
     })
@@ -152,7 +171,7 @@ describe('identity resolution', () => {
 
   it('ignores a project file that is not JSON', async () => {
     const root = await workspace()
-    const path = join(root, 'project', 'config', 'yxspec.json')
+    const path = join(root, 'yxspec.json')
     await mkdir(dirname(path), { recursive: true })
     await writeFile(path, 'not json at all', 'utf8')
     const { service } = await mount(root)
@@ -161,14 +180,17 @@ describe('identity resolution', () => {
 
   it('ignores a project file that declares nothing recognisable', async () => {
     const root = await workspace()
-    await writeJson(join(root, 'project', 'config', 'yxspec.json'), { unrelated: true })
+    await writeJson(join(root, 'yxspec.json'), { unrelated: true })
     const { service } = await mount(root)
     expect(service.spec.specId).toBe('unspecified')
   })
 
-  it('reads the project file from a configured path instead of the default', async () => {
+  it('reads the project file from a configured path instead of any default', async () => {
     const root = await workspace()
+    // An explicit path is honored verbatim: the candidate search must not run underneath it,
+    // so a root-level file present beside the configured one is not consulted.
     await writeJson(join(root, 'custom', 'identity.json'), { spec_id: 'custom-path' })
+    await writeJson(join(root, 'yxspec.json'), { spec_id: 'root-file' })
     const { service } = await mount(root, { projectConfigPath: 'custom/identity.json' })
     expect(service.spec.specId).toBe('custom-path')
   })
@@ -421,6 +443,14 @@ describe('session project membership', () => {
 
   it('is true when the cwd is a root of a project declaring the process', async () => {
     const root = await workspace()
+    await writeJson(join(root, 'yxspec.json'), {})
+    expect(sessionDeclaresYxspecProcess(scope(root, [root]), 'session-1')).toBe(true)
+  })
+
+  it('is true for a project whose declaration sits under the older nested location', async () => {
+    // The move to the project root left projects written before it still declaring the
+    // process; a session in one of them must keep seeing the tools it always had.
+    const root = await workspace()
     await writeJson(join(root, 'project', 'config', 'yxspec.json'), {})
     expect(sessionDeclaresYxspecProcess(scope(root, [root]), 'session-1')).toBe(true)
   })
@@ -432,7 +462,7 @@ describe('session project membership', () => {
 
   it('is false when the cwd belongs to no declared project', async () => {
     const root = await workspace()
-    await writeJson(join(root, 'project', 'config', 'yxspec.json'), {})
+    await writeJson(join(root, 'yxspec.json'), {})
     expect(sessionDeclaresYxspecProcess(scope(join(root, 'nested'), [root]), 'session-1')).toBe(false)
   })
 
@@ -448,13 +478,13 @@ describe('session project membership', () => {
     // root that happens to carry its own copy is not a second declaration.
     const primary = await workspace()
     const secondary = await workspace()
-    await writeJson(join(primary, 'project', 'config', 'yxspec.json'), {})
-    await writeJson(join(secondary, 'project', 'config', 'yxspec.json'), {})
+    await writeJson(join(primary, 'yxspec.json'), {})
+    await writeJson(join(secondary, 'yxspec.json'), {})
     expect(sessionDeclaresYxspecProcess(scope(secondary, [primary, secondary]), 'session-1')).toBe(true)
 
     // Without the primary root's marker the answer is false even though the
     // Session's own root carries one: the project, not the checkout, declares.
-    await rm(join(primary, 'project', 'config', 'yxspec.json'))
+    await rm(join(primary, 'yxspec.json'))
     expect(sessionDeclaresYxspecProcess(scope(secondary, [primary, secondary]), 'session-1')).toBe(false)
   })
 })

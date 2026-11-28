@@ -2,23 +2,22 @@
  * The transport plumbing the service composes, driven directly.
  *
  * The end-to-end specs go through the service, which means the failure paths
- * they do not script — no ssh client installed, no tar, a source path that is a
- * file, a pipe that dies mid-upload — would otherwise only be reachable by
- * breaking a machine. Each of those is a decision the module makes on its own,
- * so it is called on its own here.
+ * they do not script — no ssh client installed, no tar, a byte ceiling hit
+ * mid-stream, a remote tool that exits nonzero — would otherwise only be
+ * reachable by breaking a machine. Each of those is a decision the module
+ * makes on its own, so it is called on its own here.
  * @module
  */
 
 import { afterEach, describe, expect, it } from 'vitest'
-import { mkdtemp, rm, stat, writeFile } from 'node:fs/promises'
-import { writeFileSync } from 'node:fs'
-import { Writable } from 'node:stream'
+import { Readable } from 'node:stream'
+import { mkdtemp, readFile, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { SubprocessHandle, SubprocessSpawnSpec } from '@deepseek-ai/dsh-subprocess'
 import {
-  archiveTree,
-  pushArchive,
+  extractArchive,
+  fetchArchive,
   resolveSshExecutable,
   resolveTarExecutable,
   runLocal,
@@ -300,6 +299,50 @@ function finishedHandle(input: {
   } satisfies SubprocessHandle
 }
 
+/**
+ * A handle whose stdout is the live readable a test scripts, as the fetch's
+ * `stdout: 'pipe'` spawn produces. Only stderr is collected on this shape; the
+ * archive travels on the raw pipe, so no collected stdout reader exists.
+ */
+function streamingHandle(
+  stdout: Readable,
+  input: {
+    exitCode?: number | null
+    stderr?: string
+    onTerminate?: () => void
+  } = {},
+): SubprocessHandle {
+  return {
+    stdin: undefined,
+    stdout,
+    stderr: undefined,
+    control: undefined,
+    collected: {
+      // Absent rather than present-and-undefined: the handle type declares the reader as
+      // optional under exactOptionalPropertyTypes, so a stdout this double does not collect
+      // must not appear as a key at all.
+      stderr: {
+        readFrom: () => ({
+          text: input.stderr ?? '',
+          nextOffset: (input.stderr ?? '').length,
+          lossy: false,
+        }),
+      },
+    },
+    done: Promise.resolve({ exitCode: input.exitCode ?? 0, signal: null }),
+    terminate: () => input.onTerminate?.(),
+    waitForExit: async () => true,
+  } satisfies SubprocessHandle
+}
+
+/** A readable that emits one chunk and then ends, as a scripted pipe would. */
+function singleChunkStream(chunk: Buffer | string): Readable {
+  const stream = new Readable({ read() {} })
+  stream.push(typeof chunk === 'string' ? Buffer.from(chunk, 'utf8') : chunk)
+  stream.push(null)
+  return stream
+}
+
 describe('runLocal', () => {
   it('reports the collected streams and the byte cap it was given', async () => {
     const face = new SpawnFace(() => finishedHandle({
@@ -370,194 +413,158 @@ describe('runRemote', () => {
   })
 })
 
-describe('archiveTree', () => {
-  /** A scratch source tree and a staging directory under it. */
-  async function source(): Promise<string> {
-    const root = await mkdtemp(join(tmpdir(), 'dsh-yxspec-ssh-'))
-    cleanups.push(() => rm(root, { recursive: true, force: true }))
-    await writeFile(join(root, 'main.c'), 'int main(void) { return 0; }\n')
-    return root
+describe('fetchArchive', () => {
+  /** A scratch directory for the archive a fetch writes. */
+  async function staging(): Promise<string> {
+    const dir = await mkdtemp(join(tmpdir(), 'dsh-yxspec-fetch-'))
+    cleanups.push(() => rm(dir, { recursive: true, force: true }))
+    return dir
   }
 
-  it('passes each exclusion to tar and never reads the excluded subtree', async () => {
-    const root = await source()
-    // The archive is written by the double at the path tar was told to use, so
-    // the digest is taken over real bytes.
-    const face = new SpawnFace((spec) => {
-      // The invocation under test always passes `-czf <archive>`; the double
-      // writes that archive so the digest is taken over real bytes.
-      const target = spec.argv[spec.argv.indexOf('-czf') + 1]!
-      // Synchronous so the file exists by the time the archive is digested.
-      writeFileSync(target, 'archive\n')
-      return finishedHandle({ exitCode: 0 })
-    })
+  it('builds one quoted tar command run from inside the output directory', async () => {
+    const dir = await staging()
+    const face = new SpawnFace(() => streamingHandle(singleChunkStream('archive\n')))
 
-    const archive = await archiveTree(
-      face, '/usr/bin/tar', root, ['.git', '', 'node_modules'],
+    const archive = await fetchArchive(
+      face, '/usr/bin/ssh', 'user@host', '/srv/out',
+      ['system.img', 'sub/app.bin'],
+      { archivePath: join(dir, 'products.tar.gz'), maxBytes: 1024 * 1024 },
+      { timeoutMs: 30_000 },
     )
-    cleanups.push(() => archive.dispose())
 
-    const argv = face.specs[0]!.argv
-    // The blank entry is dropped rather than handed to tar as an empty pattern.
-    expect(argv.filter(part => part === '--exclude')).toHaveLength(2)
-    expect(argv).toContain('.git')
-    expect(argv).toContain('node_modules')
-    expect(argv[argv.indexOf('-C') + 1]).toBe(root)
-    expect(archive.bytes).toBeGreaterThan(0)
-    expect(archive.digest).toMatch(/^[0-9a-f]{64}$/)
-    expect((await stat(archive.path)).isFile()).toBe(true)
+    // Every path is single-quoted after `--`, so a product name is never read
+    // as a tar option and the packing runs from the declared output directory.
+    expect(face.specs[0]?.argv.at(-1)).toBe(
+      "set -e; cd '/srv/out'; tar -czf - -- 'system.img' 'sub/app.bin'",
+    )
+    expect(face.specs[0]?.argv[0]).toBe('/usr/bin/ssh')
+    expect(face.specs[0]?.argv.at(-2)).toBe('user@host')
+    // The archive travels on the child's stdout, so stdout must be a raw pipe
+    // while stdin stays closed — the fetch sends nothing to the server.
+    expect(face.specs[0]?.stdio.stdout).toBe('pipe')
+    expect(face.specs[0]?.stdio.stdin).toBe('ignore')
+    expect(archive).toEqual({ bytes: 'archive\n'.length })
   })
 
-  it('refuses a source that is not a directory', async () => {
-    const root = await source()
+  it('streams the bytes it reads into the archive file on disk', async () => {
+    const dir = await staging()
+    const payload = 'past-the-header-this-is-the-products-tarball\n'
+    const face = new SpawnFace(() => streamingHandle(singleChunkStream(payload)))
+    const archivePath = join(dir, 'products.tar.gz')
+
+    const archive = await fetchArchive(
+      face, '/usr/bin/ssh', 'user@host', '/srv/out', ['a.img'],
+      { archivePath, maxBytes: 1024 * 1024 },
+      { timeoutMs: 30_000 },
+    )
+
+    expect(archive.error).toBeUndefined()
+    expect(archive.bytes).toBe(payload.length)
+    // What landed on disk is exactly what the client streamed: the file is the
+    // archive the extraction step will open, not a summary of it.
+    expect((await readFile(archivePath)).toString()).toBe(payload)
+  })
+
+  it('aborts past the byte ceiling with an actionable error', async () => {
+    const dir = await staging()
+    let terminated = false
+    // One chunk larger than the ceiling stands in for a product tree named by
+    // accident; the EOF queued behind it lets the read settle after the abort.
+    const face = new SpawnFace(() => streamingHandle(singleChunkStream('x'.repeat(64)), {
+      onTerminate: () => { terminated = true },
+    }))
+
+    const archive = await fetchArchive(
+      face, '/usr/bin/ssh', 'user@host', '/srv/out', ['out/'],
+      { archivePath: join(dir, 'products.tar.gz'), maxBytes: 8 },
+      { timeoutMs: 30_000 },
+    )
+
+    expect(archive.error).toBe(
+      'the products exceed the 8-byte fetch ceiling; name fewer or smaller paths',
+    )
+    // The counting stopped at the chunk that crossed the ceiling, and the
+    // client was told to stop rather than being left to finish the transfer.
+    expect(archive.bytes).toBe(64)
+    expect(terminated).toBe(true)
+  })
+
+  it('surfaces the client stderr when the remote side exits nonzero', async () => {
+    const dir = await staging()
+    const face = new SpawnFace(() => streamingHandle(singleChunkStream(''), {
+      exitCode: 255, stderr: 'tar: system.img: Cannot open: No such file or directory\n',
+    }))
+
+    const archive = await fetchArchive(
+      face, '/usr/bin/ssh', 'user@host', '/srv/out', ['system.img'],
+      { archivePath: join(dir, 'products.tar.gz'), maxBytes: 1024 * 1024 },
+      { timeoutMs: 30_000 },
+    )
+    // The client's own words are the diagnostic a caller can act on; an
+    // anonymous exit code would send the operator reading ssh manuals.
+    expect(archive.error).toBe('tar: system.img: Cannot open: No such file or directory')
+  })
+
+  it('falls back to naming the exit code when the client wrote no diagnostic', async () => {
+    const dir = await staging()
+    const face = new SpawnFace(() => streamingHandle(singleChunkStream(''), { exitCode: 2 }))
+
+    const archive = await fetchArchive(
+      face, '/usr/bin/ssh', 'user@host', '/srv/out', ['system.img'],
+      { archivePath: join(dir, 'products.tar.gz'), maxBytes: 1024 * 1024 },
+      { timeoutMs: 30_000 },
+    )
+    expect(archive.error).toBe('remote tar exited 2')
+  })
+
+  it('combines a caller signal with the deadline', async () => {
+    const dir = await staging()
+    const controller = new AbortController()
+    const face = new SpawnFace(() => streamingHandle(singleChunkStream('archive\n')))
+
+    await fetchArchive(
+      face, '/usr/bin/ssh', 'user@host', '/srv/out', ['a.img'],
+      { archivePath: join(dir, 'products.tar.gz'), maxBytes: 1024 * 1024 },
+      { timeoutMs: 30_000, signal: controller.signal },
+    )
+    expect(face.specs[0]?.signal).toBeInstanceOf(AbortSignal)
+    expect(face.specs[0]?.signal?.aborted).toBe(false)
+  })
+})
+
+describe('extractArchive', () => {
+  it('expands the archive into the target directory with tar', async () => {
     const face = new SpawnFace(() => finishedHandle({ exitCode: 0 }))
-    await expect(archiveTree(
-      face, '/usr/bin/tar', join(root, 'main.c'), [],
-    )).rejects.toThrow(/not a directory/)
-    // Nothing was spawned: the check happens before the archive is attempted.
-    expect(face.specs).toEqual([])
+
+    await expect(extractArchive(face, '/usr/bin/tar', '/tmp/products.tar.gz', '/tmp/run'))
+      .resolves.toBeUndefined()
+    expect(face.specs[0]?.argv).toEqual([
+      '/usr/bin/tar', '-xzf', '/tmp/products.tar.gz', '-C', '/tmp/run',
+    ])
+    // The extraction runs with the target as its working directory, matching
+    // the `-C` the archive's relative paths assume.
+    expect(face.specs[0]?.cwd).toBe('/tmp/run')
+    expect(face.specs[0]?.signal).toBeUndefined()
   })
 
-  it('surfaces tar\'s own diagnostic and cleans the staging tree when it fails', async () => {
-    const root = await source()
+  it('carries a caller cancellation into the extraction', async () => {
+    const face = new SpawnFace(() => finishedHandle({ exitCode: 0 }))
+    const controller = new AbortController()
+    await extractArchive(face, '/usr/bin/tar', '/tmp/a.tar.gz', '/tmp/run', { signal: controller.signal })
+    expect(face.specs[0]?.signal).toBe(controller.signal)
+  })
+
+  it('fails loud on a nonzero exit, naming tar stderr', async () => {
     const face = new SpawnFace(() => finishedHandle({
       exitCode: 2, stderr: 'tar: cannot stat: No such file\n',
     }))
-
-    await expect(archiveTree(face, '/usr/bin/tar', root, []))
+    await expect(extractArchive(face, '/usr/bin/tar', '/tmp/a.tar.gz', '/tmp/run'))
       .rejects.toThrow(/tar failed \(exit 2\): tar: cannot stat/)
   })
 
   it('falls back to stdout for the diagnostic when tar writes nothing to stderr', async () => {
-    const root = await source()
     const face = new SpawnFace(() => finishedHandle({ exitCode: 1, stdout: 'out of space\n' }))
-    await expect(archiveTree(face, '/usr/bin/tar', root, []))
+    await expect(extractArchive(face, '/usr/bin/tar', '/tmp/a.tar.gz', '/tmp/run'))
       .rejects.toThrow(/tar failed \(exit 1\): out of space/)
-  })
-
-  it('propagates a spawn failure after removing the staging tree', async () => {
-    const root = await source()
-    const face = new SpawnFace(() => {
-      throw new Error('spawn refused')
-    })
-    await expect(archiveTree(face, '/usr/bin/tar', root, []))
-      .rejects.toThrow('spawn refused')
-  })
-})
-
-describe('pushArchive', () => {
-  /** A scratch archive file to stream, and a directory to hold it. */
-  async function staged(): Promise<string> {
-    const dir = await mkdtemp(join(tmpdir(), 'dsh-yxspec-push-'))
-    cleanups.push(() => rm(dir, { recursive: true, force: true }))
-    const path = join(dir, 'tree.tar.gz')
-    await writeFile(path, 'payload\n')
-    return path
-  }
-
-  /** A handle with a real piped stdin, so the bytes actually travel. */
-  function pipedHandle(onBytes: (count: number) => void, exitCode = 0, delayMs = 0): SubprocessHandle {
-    let received = 0
-    const stdin = new Writable({
-      write(chunk, _encoding, callback) {
-        received += chunk.length
-        onBytes(received)
-        callback()
-      },
-    })
-    return {
-      stdin: stdin as never,
-      stdout: undefined,
-      stderr: undefined,
-      control: undefined,
-      collected: {
-        stdout: { readFrom: () => ({ text: '', nextOffset: 0, lossy: false }) },
-        stderr: { readFrom: () => ({ text: '', nextOffset: 0, lossy: false }) },
-      },
-      done: new Promise((resolve) => {
-        setTimeout(() => { resolve({ exitCode, signal: null }) }, delayMs)
-      }),
-      terminate: () => undefined,
-      waitForExit: async () => true,
-    } satisfies SubprocessHandle
-  }
-
-  it('streams the archive into a piped stdin and clears the target first', async () => {
-    const archive = await staged()
-    let sawBytes = 0
-    // A deadline and a cancellation token can both be supplied; the combined
-    // signal is what the provider receives.
-    const controller = new AbortController()
-    const face = new SpawnFace(() => pipedHandle((count) => { sawBytes = count }))
-
-    const result = await pushArchive(
-      face,
-      '/usr/bin/ssh',
-      'user@host',
-      '/srv/builds/slug',
-      archive,
-      { timeoutMs: 30_000, signal: controller.signal },
-    )
-
-    expect(result.exitCode).toBe(0)
-    // The command removes a previous tree, recreates it, and extracts from stdin
-    // rather than from an argument, so a large tree never meets `ARG_MAX`.
-    const command = face.specs[0]!.argv.at(-1)!
-    expect(command).toContain("rm -rf -- '/srv/builds/slug'")
-    expect(command).toContain("tar -xzf - -C '/srv/builds/slug'")
-    expect(face.specs[0]?.stdio.stdin).toBe('pipe')
-    expect(sawBytes).toBeGreaterThan(0)
-  })
-
-  it('reports a timed-out upload as an exit fact rather than as a rejection', async () => {
-    const archive = await staged()
-    // The transfer is still in flight when the deadline fires: `timedOut` is
-    // read off the deadline's own signal, so it is true even though the client
-    // did eventually report an exit code of its own.
-    const face = new SpawnFace(() => pipedHandle(() => undefined, 255, 50))
-
-    const result = await pushArchive(
-      face, '/usr/bin/ssh', 'user@host', '/srv/x', archive,
-      { timeoutMs: 1 },
-    )
-    expect(result).toMatchObject({ exitCode: 255, timedOut: true })
-  })
-
-  it('reports a completed upload as not timed out', async () => {
-    const archive = await staged()
-    const face = new SpawnFace(() => pipedHandle(() => undefined, 0))
-    const result = await pushArchive(
-      face, '/usr/bin/ssh', 'user@host', '/srv/x', archive,
-      { timeoutMs: 30_000 },
-    )
-    expect(result.timedOut).toBe(false)
-  })
-
-  it('terminates the client when the archive cannot be read', async () => {
-    const dir = await mkdtemp(join(tmpdir(), 'dsh-yxspec-push-'))
-    cleanups.push(() => rm(dir, { recursive: true, force: true }))
-    let terminated = false
-    const face = new SpawnFace(() => ({
-      stdin: new Writable({ write: (_chunk, _encoding, callback) => callback() }) as never,
-      stdout: undefined,
-      stderr: undefined,
-      control: undefined,
-      collected: {
-        stdout: { readFrom: () => ({ text: '', nextOffset: 0, lossy: false }) },
-        stderr: { readFrom: () => ({ text: '', nextOffset: 0, lossy: false }) },
-      },
-      done: Promise.resolve({ exitCode: 0, signal: null }),
-      terminate: () => { terminated = true },
-      waitForExit: async () => true,
-    } satisfies SubprocessHandle))
-
-    // A path that does not exist stands in for "the archive was removed between
-    // staging and upload": the read fails and the client must not be left running.
-    await expect(pushArchive(
-      face,
-      '/usr/bin/ssh', 'user@host', '/srv/x', join(dir, 'missing.tar.gz'),
-      { timeoutMs: 30_000 },
-    )).rejects.toThrow(/ENOENT/)
-    expect(terminated).toBe(true)
   })
 })

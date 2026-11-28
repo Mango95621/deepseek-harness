@@ -136,6 +136,10 @@ describe('whether a step has what it needs', () => {
     ['specification', {}, false],
     ['specification', { specificationPath: '' }, false],
     ['specification', { specificationPath: 'specs/spec.md' }, true],
+    // Leaving it for later answers the step as fully as a document does: both mean the operator has
+    // said what this run is against, or that there is nothing to say yet.
+    ['specification', { specificationDeferred: true }, true],
+    ['specification', { specificationDeferred: false }, false],
     ['server', {}, false],
     ['server', { serverResolved: false }, false],
     // "This project builds locally" is an answer, and a deliberately recorded one.

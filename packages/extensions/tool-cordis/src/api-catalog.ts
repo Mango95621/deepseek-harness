@@ -5499,17 +5499,24 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
       },
       {
         signature: 'async probe( workspaceId: string, serverId: string, signal?: AbortSignal, ): Promise<YxspecRemoteProbe>',
-        description: 'Probe a declared server: SSH handshake, platform, and base-directory presence (creating it when absent).\n\nA probe never throws for an unreachable server — reachability is the value being reported, and a caller rendering a picker needs the negative answer as much as the positive one. It throws only when the project declares no such server, which is a caller mistake rather than a connectivity fact.',
+        description: 'Probe a declared server: SSH handshake, platform, and whether the declared directories are there.\n\nA probe never throws for an unreachable server — reachability is the value being reported, and a caller rendering a picker needs the negative answer as much as the positive one. It throws only when the project declares no such server, which is a caller mistake rather than a connectivity fact.\n\nThe project directory is read, never created: a declaration naming a tree that is not there is a misconfiguration to report, and a probe that made an empty directory would turn it into a run that compiles nothing. The output directory is only reported — a build creates it — so its absence is a fact about the machine, not a failure of the probe.',
         parameters: [{ name: 'workspaceId', description: 'the owning project.' }, { name: 'serverId', description: 'the server to probe.' }, { name: 'signal', description: 'cancellation.' }],
         returns: 'the probe outcome.',
         throws: ['when the project declares no such server.'],
       },
       {
+        signature: 'async browse(request: YxspecRemoteBrowseRequest, signal?: AbortSignal): Promise<YxspecRemoteBrowse>',
+        description: 'List the directories under one path on a server, for the wizard\'s directory picker.\n\nOne round trip: `cd` into the requested directory (or the login directory when none was named), print where that landed, and list the directories under it. The shell\'s own answer is the truth here — home is whatever the login shell says it is, and a path that only resolves inside a profile is still the one the operator means.\n\nAn empty listing is an answer, not an exception: a directory with no children, a path that is not there, and a client that refused to start are three states a picker renders differently, so each comes back as `error` beside whatever the listing did produce. Nothing is stored and nothing outside the named directory is read.',
+        parameters: [{ name: 'request', description: 'the destination, the directory to list, and optional client and budget.' }, { name: 'signal', description: 'cancellation.' }],
+        returns: 'the listing, with `error` set when it could not be produced.',
+        throws: ['when the request names a directory that is not absolute, which is a caller mistake.'],
+      },
+      {
         signature: 'async run( workspaceId: string, request: YxspecRemoteRunRequest, signal?: AbortSignal, ): Promise<YxspecRemoteRunResult>',
-        description: 'Run one declared recipe against a project tree.\n\nA failed build is returned, not thrown: a compile error is the answer the caller asked for, and what a failure *means* belongs to the flow\'s gate, not to the transport. Only a transport-level impossibility (undeclared server or recipe, no SSH client, no archive tool) throws.',
-        parameters: [{ name: 'workspaceId', description: 'the owning project.' }, { name: 'request', description: 'the server, recipe, and optional source overrides.' }, { name: 'signal', description: 'cancellation.' }],
+        description: 'Run one declared recipe in the declared project directory.\n\nA failed build is returned, not thrown: a compile error is the answer the caller asked for, and what a failure *means* belongs to the flow\'s gate, not to the transport. Only a transport-level impossibility (undeclared server or recipe, no SSH client, a product path that could leave the output directory) throws.',
+        parameters: [{ name: 'workspaceId', description: 'the owning project.' }, { name: 'request', description: 'the server, recipe, and optional products to fetch back.' }, { name: 'signal', description: 'cancellation.' }],
         returns: 'the run outcome, also recorded in the ledger.',
-        throws: ['when the declaration is missing or the transport cannot start.'],
+        throws: ['when the declaration is missing, the recipe is undeclared, or a fetch path is refused.'],
       },
       {
         signature: 'async runsFor(workspaceId: string, limit: number = 20): Promise<readonly RemoteRunRecord[]>',
@@ -5532,9 +5539,30 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
     methods: [
       {
         signature: '@Remote async servers(workspaceId: string): Promise<YxspecRemoteServerView[]>',
-        description: 'The build servers one project declared, as the client renders them.\n\nThe record\'s own fields are projected rather than returned whole: `recipes` maps a recipe id to a server-side command template, which is deployment detail the browser has no use for, and a Remote boundary should carry what the caller reads.',
+        description: 'The build servers one project declared, as the client renders them.',
         parameters: [{ name: 'workspaceId', description: 'the project whose declarations to list.' }],
         returns: 'the declared servers in declaration order; empty when the remote plugin is not mounted or the project declared none.',
+      },
+      {
+        signature: '@Remote async browseServer(request: YxspecRemoteBrowseRequest): Promise<YxspecRemoteBrowse>',
+        description: 'List the directories under one path on a server, so the wizard can offer them.\n\nThis is the one call on this surface that names a destination instead of a declaration, and it has to be: the operator picks the directory *before* the declaration that would name it exists, which is what turns "type the path from memory" into "connect and choose". Nothing is stored — the answer is a listing, and the declaration written afterwards is where a choice becomes state.\n\nA host that cannot answer is an answer: an unreachable machine, a path that is not there, and a directory with no children all come back as a listing whose `error` or emptiness says which. Only a missing build-server service, or a path the service refuses, raises.',
+        parameters: [{ name: 'request', description: 'the destination to reach and the directory to list.' }],
+        returns: 'the listing, with `error` set when it could not be produced.',
+        throws: ['RemoteError when no build-server service is mounted, or the service refused the request.'],
+      },
+      {
+        signature: '@Remote async probeServer(workspaceId: string, serverId: string): Promise<YxspecRemoteProbe>',
+        description: 'Test one declared server and report what the build host answered.\n\nThe wizard asks this when the operator wants to know whether the declaration they just wrote reaches anything. The outcome is stored on the declaration by the service, so the row a list renders afterwards describes this attempt without asking again — which is why the answer is returned *and* persisted rather than only returned.\n\nAn unreachable host is an answer, not a failure: it comes back as `reachable: false` with the client\'s own words. Only a missing project id, a deployment that mounts no build-server service, or a server this project never declared raises.',
+        parameters: [{ name: 'workspaceId', description: 'the project that declared the server.' }, { name: 'serverId', description: 'the declaration to test.' }],
+        returns: 'what the probe concluded.',
+        throws: ['RemoteError when no project was named, no build-server service is mounted, or the project declares no such server.'],
+      },
+      {
+        signature: '@Remote async declareServer( workspaceId: string, draft: YxspecRemoteServerDraft, ): Promise<YxspecRemoteServerView>',
+        description: 'Declare or replace one build server from the onboarding wizard.\n\nUnlike servers, an absent seam is a failure rather than an empty answer: listing nothing and declaring nothing look the same to a caller that swallows the difference, and an operator who filled in a form and saw the row simply not appear would have no way to tell a deployment that cannot store declarations from one that refused this one.\n\nThe refusal path carries the service\'s own message. Validation belongs to the operation that writes the record — `declare` runs it for this call exactly as it does for the tool — so re-raising its reason as a typed fault is what keeps the wizard\'s report actionable instead of a generic failure.',
+        parameters: [{ name: 'workspaceId', description: 'the project the declaration belongs to.' }, { name: 'draft', description: 'the declaration the operator submitted.' }],
+        returns: 'the stored declaration, projected as the list renders it.',
+        throws: ['RemoteError when no project was named, no build-server service is mounted, or the service refused the declaration.'],
       },
     ],
   },
@@ -11903,24 +11931,48 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface YxspecIdentityView {\n    specId: string;\n    projectName: string;\n    customer: string;\n    productType: string;\n}',
   },
   {
+    name: 'YxspecRemoteBrowse',
+    declaration: 'export interface YxspecRemoteBrowse {\n    readonly directory: string;\n    readonly parent?: string;\n    readonly directories: readonly string[];\n    readonly truncated: boolean;\n    readonly error?: string;\n}',
+  },
+  {
+    name: 'YxspecRemoteBrowseRequest',
+    declaration: 'export interface YxspecRemoteBrowseRequest {\n    readonly destination: string;\n    readonly directory?: string;\n    readonly sshExecutable?: string;\n    readonly timeoutMs?: number;\n}',
+  },
+  {
+    name: 'YxspecRemoteFetched',
+    declaration: 'export interface YxspecRemoteFetched {\n    readonly path: string;\n    readonly localPath: string;\n    readonly bytes: number;\n    readonly error?: string;\n}',
+  },
+  {
     name: 'YxspecRemoteProbe',
-    declaration: 'export interface YxspecRemoteProbe {\n    readonly serverId: string;\n    readonly reachable: boolean;\n    readonly platform?: string;\n    readonly error?: string;\n}',
+    declaration: 'export interface YxspecRemoteProbe {\n    readonly serverId: string;\n    readonly reachable: boolean;\n    readonly platform?: string;\n    readonly outputPresent?: boolean;\n    readonly error?: string;\n}',
+  },
+  {
+    name: 'YxspecRemoteRecipe',
+    declaration: 'export interface YxspecRemoteRecipe {\n    readonly command: string;\n    readonly outputDirectory?: string;\n}',
+  },
+  {
+    name: 'YxspecRemoteRecipeDraft',
+    declaration: 'export interface YxspecRemoteRecipeDraft {\n    id: string;\n    command: string;\n    outputDirectory?: string;\n}',
   },
   {
     name: 'YxspecRemoteRunRequest',
-    declaration: 'export interface YxspecRemoteRunRequest {\n    readonly serverId: string;\n    readonly recipe: string;\n    readonly sourceDirectory?: string;\n    readonly push?: boolean;\n    readonly extraArgs?: string;\n}',
+    declaration: 'export interface YxspecRemoteRunRequest {\n    readonly serverId: string;\n    readonly recipe: string;\n    readonly extraArgs?: string;\n    readonly fetch?: readonly string[];\n    readonly fetchInto?: string;\n}',
   },
   {
     name: 'YxspecRemoteRunResult',
-    declaration: 'export interface YxspecRemoteRunResult {\n    readonly runId: string;\n    readonly serverId: string;\n    readonly recipe: string;\n    readonly remoteDirectory: string;\n    readonly command: string;\n    readonly exitCode: number | null;\n    readonly log: string;\n    readonly truncated: boolean;\n    readonly timedOut: boolean;\n    readonly durationMs: number;\n    readonly treeDigest?: string;\n    readonly logSha256: string;\n}',
+    declaration: 'export interface YxspecRemoteRunResult {\n    readonly runId: string;\n    readonly serverId: string;\n    readonly recipe: string;\n    readonly projectDirectory: string;\n    readonly outputDirectory: string;\n    readonly command: string;\n    readonly exitCode: number | null;\n    readonly log: string;\n    readonly truncated: boolean;\n    readonly timedOut: boolean;\n    readonly durationMs: number;\n    readonly revision?: string;\n    readonly revisionDigest?: string;\n    readonly revisionError?: string;\n    readonly fetched?: readonly YxspecRemoteFetched[];\n    readonly logSha256: string;\n}',
   },
   {
     name: 'YxspecRemoteServer',
-    declaration: 'export interface YxspecRemoteServer {\n    readonly id: string;\n    readonly title: string;\n    readonly destination: string;\n    readonly baseDirectory: string;\n    readonly transport: YxspecRemoteTransport;\n    readonly recipes: Readonly<Record<string, string>>;\n    readonly sshExecutable?: string;\n    readonly timeoutMs: number;\n}',
+    declaration: 'export interface YxspecRemoteServer {\n    readonly id: string;\n    readonly title: string;\n    readonly destination: string;\n    readonly projectDirectory: string;\n    readonly captureRevision?: boolean;\n    readonly transport: YxspecRemoteTransport;\n    readonly recipes: Readonly<Record<string, YxspecRemoteRecipe>>;\n    readonly sshExecutable?: string;\n    readonly timeoutMs: number;\n}',
+  },
+  {
+    name: 'YxspecRemoteServerDraft',
+    declaration: 'export interface YxspecRemoteServerDraft {\n    serverId: string;\n    title?: string;\n    destination: string;\n    projectDirectory: string;\n    captureRevision?: boolean;\n    recipes: YxspecRemoteRecipeDraft[];\n    timeoutMs?: number;\n    sshExecutable?: string;\n}',
   },
   {
     name: 'YxspecRemoteServerView',
-    declaration: 'export interface YxspecRemoteServerView {\n    serverId: string;\n    title: string;\n    destination: string;\n    baseDirectory: string;\n    transport: string;\n    recipeIds: string[];\n    declaredAt: string;\n    lastProbeAt?: string;\n    lastPlatform?: string;\n}',
+    declaration: 'export interface YxspecRemoteServerView {\n    serverId: string;\n    title: string;\n    destination: string;\n    projectDirectory: string;\n    outputDirectory?: string;\n    transport: string;\n    recipeIds: string[];\n    declaredAt: string;\n    lastProbeAt?: string;\n    lastProbeError?: string;\n    lastPlatform?: string;\n}',
   },
   {
     name: 'YxspecRemoteTransport',

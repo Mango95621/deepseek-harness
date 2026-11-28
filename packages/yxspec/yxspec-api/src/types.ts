@@ -1,10 +1,23 @@
 /**
- * Wire types for the `yxspec` Remote namespace.
+ * Wire types for the `yxspec` and `yxspecRemote` Remote namespaces.
  *
  * These mirror the domain types but are plain JSON: a Remote boundary crosses into the
  * browser, so nothing here is a class, a readonly brand, or a path object.
  * @module @deepseek-ai/dsh-yxspec-api/types
  */
+
+/**
+ * The probe outcome, re-exported rather than re-declared.
+ *
+ * It already is plain JSON, and the browser reads it — so the choice is between one shape and two
+ * that must be kept in step. Re-exporting also keeps a client from depending on the seam package
+ * itself just to name what a probe returned.
+ */
+export type {
+  YxspecRemoteBrowse,
+  YxspecRemoteBrowseRequest,
+  YxspecRemoteProbe,
+} from '@deepseek-ai/dsh-yxspec-remote'
 
 /** One step, as the client renders it. */
 export interface YxspecStepView {
@@ -93,18 +106,72 @@ export interface YxspecRemoteServerView {
   title: string
   /** OpenSSH destination resolved against the host's own `~/.ssh/config`. */
   destination: string
-  /** Server-side directory a run's scratch tree lands in. */
-  baseDirectory: string
+  /** Server-side directory holding the checkout a run builds in. */
+  projectDirectory: string
+  /** Server-side directory products land in; absent means `<projectDirectory>/out`. */
+  outputDirectory?: string
   /** The transport the declaration carries. */
   transport: string
   /** Recipe ids the server declares, sorted. */
   recipeIds: string[]
   /** ISO-8601 instant the declaration was written. */
   declaredAt: string
-  /** ISO-8601 instant of the last successful probe; absent until one succeeds. */
+  /** ISO-8601 instant of the last probe, successful or not; absent until one runs. */
   lastProbeAt?: string
+  /** Why the last probe failed; absent once a probe succeeds. */
+  lastProbeError?: string
   /** Remote platform string observed by the last successful probe. */
   lastPlatform?: string
+}
+
+/**
+ * One recipe as the client submits it.
+ *
+ * An ordered list on the wire rather than the id-keyed map the record stores, because the form
+ * that fills it is a list of rows: an operator adding a second recipe would otherwise have to
+ * name a key the map has no place for, and a repeated id would silently overwrite a row still
+ * on screen.
+ */
+export interface YxspecRemoteRecipeDraft {
+  /** Recipe id, unique within the declaration. */
+  id: string
+  /** Server command template; `{cwd}` is the project directory and `{out}` this recipe's output directory. */
+  command: string
+  /**
+   * Absolute server directory this recipe's products land in.
+   *
+   * Per recipe rather than per server because a whole build and a module build of one tree write
+   * to different places; omitted means `<projectDirectory>/out`.
+   */
+  outputDirectory?: string
+}
+
+/**
+ * A build-server declaration as the client submits it.
+ *
+ * Every field the record needs, with the optional ones defaulted by the host rather than by the
+ * form: a deployment that changes the default timeout then changes it for the tool path and the
+ * wizard at once, instead of for whichever of the two the operator happened to use. No
+ * credential field exists here or in the record — the destination is an OpenSSH destination the
+ * host's own `~/.ssh/config` resolves.
+ */
+export interface YxspecRemoteServerDraft {
+  /** Short id, unique within the project; a re-declaration under one id replaces it. */
+  serverId: string
+  /** Human-readable label; defaults to the id. */
+  title?: string
+  /** OpenSSH destination: a `~/.ssh/config` Host alias or `user@host`. */
+  destination: string
+  /** Absolute server directory holding the checkout to build; it must already exist. */
+  projectDirectory: string
+  /** Whether each run records the server-side source revision; omitted means it does not. */
+  captureRevision?: boolean
+  /** The recipes the server may run; at least one is required. */
+  recipes: YxspecRemoteRecipeDraft[]
+  /** Per-run wall clock budget in milliseconds; omitted means the host's default. */
+  timeoutMs?: number
+  /** Absolute local `ssh` client; omitted means the platform default. */
+  sshExecutable?: string
 }
 
 /** One candidate specification document a deployment may adopt. */

@@ -45,8 +45,10 @@ Choose it for every deployment that runs a gated YXSpec flow, because it is the 
 | `workspaceRoot` | cwd | The workspace root the flow operates in; a relative path resolves against cwd |
 | `identity` | from `yxspec.json` | The spec identity to report; an explicit value wins over the file |
 | `trackMapPath` | `swe-track-map.json` | Workspace-relative dual-track map; a missing file yields an empty domain list rather than a failure |
-| `projectConfigPath` | — | The project's own `yxspec.json`, whose identity fields seed `identity` |
+| `projectConfigPath` | see below | The project's own `yxspec.json`, whose identity fields seed `identity` |
 | `stages` | `DEFAULT_STAGES` | The declared stage model; replacing it is how a deployment runs its own process |
+
+When `projectConfigPath` is omitted the service looks under `workspaceRoot` for `yxspec.json` (project root) and then `project/config/yxspec.json` (the older layout), taking the first that exists. The root file wins, so migrating is adding a file rather than removing one, and a deployment that only ever wrote the nested path keeps working.
 
 The generated [configuration catalog](../../../docs/config-catalog.md#deepseek-aidsh-yxspec) is the exhaustive source for every accepted field.
 

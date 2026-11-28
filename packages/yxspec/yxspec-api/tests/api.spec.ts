@@ -95,7 +95,7 @@ describe('the yxspec Remote namespace', () => {
 
   it('projects the identity, stage model, and track map in one call', async () => {
     const root = await scratch()
-    await seed(root, 'project/config/yxspec.json', JSON.stringify({
+    await seed(root, 'yxspec.json', JSON.stringify({
       spec_id: 'YX-IVI-1',
       project_name: '车载座舱',
       customer: '雅迅',
@@ -185,17 +185,17 @@ describe('the yxspec Remote namespace', () => {
 
   it('lists the specification documents a project already holds', async () => {
     const root = await scratch()
-    await seed(root, 'specs/aspice.md')
+    await seed(root, 'project/specs/aspice.pdf')
     const { ctx, controller } = await boot(root)
     ctx.provide('workspaceRegistry', {
       list: () => [{ id: 'p1', roots: [root] }],
     } as never)
 
     const found = await controller.documents('p1')
-    expect(found.documents.map(view => view.path)).toEqual(['specs/aspice.md'])
+    expect(found.documents.map(view => view.path)).toEqual(['project/specs/aspice.pdf'])
     // The report names the directories walked, absolute, so an operator can compare them
     // against a file manager without knowing how the host resolves a project root.
-    expect(found.searched).toContain(join(root, 'specs'))
+    expect(found.searched).toContain(join(root, 'project'))
     expect(found.truncated).toBe(false)
   })
 
@@ -210,25 +210,24 @@ describe('the yxspec Remote namespace', () => {
   it('widens the search onto the directories the caller added', async () => {
     const root = await scratch()
     const added = await scratch()
-    await seed(root, 'specs/aspice.md')
-    await seed(added, 'delivered/prd.md')
+    await seed(root, 'project/specs/aspice.pdf')
+    await seed(added, 'delivered/prd.docx')
     const { ctx, controller } = await boot(root)
     ctx.provide('workspaceRegistry', {
       list: () => [{ id: 'p1', roots: [root] }],
     } as never)
 
     // The additions arrive as an argument rather than as host state: this controller stays
-    // read-only, and where one operator looked is not a property of the project. The project
-    // declares no location of its own here, so its `specs` file comes from the convention walk
-    // — which the operator's own directory outranks.
+    // read-only, and where one operator looked is not a property of the project. The operator's own
+    // directory outranks the two the deployment walks on its own.
     const found = await controller.documents('p1', [added])
-    expect(found.documents.map(view => view.path)).toEqual(['delivered/prd.md', 'specs/aspice.md'])
+    expect(found.documents.map(view => view.path)).toEqual(['delivered/prd.docx', 'project/specs/aspice.pdf'])
     expect(found.documents[0]?.rootIndex).toBe(1)
     expect(found.searched).toContain(added)
 
     // Omitting the parameter searches the project's own layout alone.
     const alone = await controller.documents('p1')
-    expect(alone.documents.map(view => view.path)).toEqual(['specs/aspice.md'])
+    expect(alone.documents.map(view => view.path)).toEqual(['project/specs/aspice.pdf'])
     expect(alone.searched).not.toContain(added)
   })
 
@@ -299,7 +298,7 @@ describe('the yxspecRemote Remote namespace', () => {
     expect(ctx.yxspecRemoteController.typertRemote.serviceKey).toBe('yxspecRemoteController')
     expect(ctx.yxspecRemoteController.typertRemote.namespace).toBe('yxspecRemote')
     expect(remoteMethods(ctx.yxspecRemoteController).map(marker => marker.method))
-      .toEqual(['servers'])
+      .toEqual(['servers', 'browseServer', 'probeServer', 'declareServer'])
   })
 
   it('projects a declaration to what the browser actually renders', async () => {
@@ -310,18 +309,19 @@ describe('the yxspecRemote Remote namespace', () => {
           serverId: 'build-01',
           title: '构建机',
           destination: 'ci@build.internal',
-          baseDirectory: '/srv/yx',
+          projectDirectory: '/srv/yx',
           transport: 'ssh',
           recipes: { compile: 'cmake --build .', unitTest: 'ctest' },
           declaredAt: '2026-01-02T03:04:05.000Z',
           lastProbeAt: '2026-01-03T00:00:00.000Z',
           lastPlatform: 'linux',
+          lastProbeError: 'Connection refused',
         },
         {
           serverId: 'build-02',
           title: '未探测',
           destination: 'ci@other',
-          baseDirectory: '/srv/y2',
+          projectDirectory: '/srv/y2',
           transport: 'ssh',
           recipes: {},
           declaredAt: '2026-01-04T00:00:00.000Z',
@@ -335,12 +335,13 @@ describe('the yxspecRemote Remote namespace', () => {
         serverId: 'build-01',
         title: '构建机',
         destination: 'ci@build.internal',
-        baseDirectory: '/srv/yx',
+        projectDirectory: '/srv/yx',
         transport: 'ssh',
         recipeIds: ['compile', 'unitTest'],
         declaredAt: '2026-01-02T03:04:05.000Z',
         lastProbeAt: '2026-01-03T00:00:00.000Z',
         lastPlatform: 'linux',
+        lastProbeError: 'Connection refused',
       },
       {
         // The command templates behind the recipe ids stay server-side: a Remote
@@ -348,7 +349,7 @@ describe('the yxspecRemote Remote namespace', () => {
         serverId: 'build-02',
         title: '未探测',
         destination: 'ci@other',
-        baseDirectory: '/srv/y2',
+        projectDirectory: '/srv/y2',
         transport: 'ssh',
         recipeIds: [],
         declaredAt: '2026-01-04T00:00:00.000Z',
@@ -368,6 +369,258 @@ describe('the yxspecRemote Remote namespace', () => {
     const { ctx } = await boot(await scratch())
     try {
       await ctx.yxspecRemoteController.servers('')
+      throw new Error('expected the call to fail')
+    } catch (error) {
+      expect(remoteErrorOf(error)?.code).toBe('yxspecRemote/no-project')
+    }
+  })
+
+  it('declares a server through the service that owns the record', async () => {
+    const { ctx } = await boot(await scratch())
+    const declared: unknown[] = []
+    ctx.provide('yxspecRemote', {
+      declare: async (_workspaceId: string, server: unknown) => {
+        declared.push(server)
+        return {
+          workspaceId: 'p1',
+          ...server as Record<string, unknown>,
+          serverId: (server as { id: string }).id,
+          projectDirectory: '/srv/yx',
+          declaredAt: '2026-02-03T04:05:06.000Z',
+        }
+      },
+    } as never)
+
+    const view = await ctx.yxspecRemoteController.declareServer('p1', {
+      serverId: 'build-01',
+      destination: 'ci@build.internal',
+      projectDirectory: '/srv/yx/',
+      recipes: [
+        { id: 'compile', command: 'cmake --build .', outputDirectory: '/srv/yx/out' },
+        { id: 'unit', command: 'ctest' },
+      ],
+    })
+
+    // The draft's optional fields are filled by the host: the label falls back to the id, the
+    // timeout to the declared default, and an absent ssh client stays absent rather than
+    // becoming an empty string the run would then try to execute.
+    expect(declared).toEqual([{
+      id: 'build-01',
+      title: 'build-01',
+      destination: 'ci@build.internal',
+      projectDirectory: '/srv/yx/',
+      transport: 'ssh',
+      recipes: {
+        compile: { command: 'cmake --build .', outputDirectory: '/srv/yx/out' },
+        unit: { command: 'ctest' },
+      },
+      timeoutMs: 900_000,
+    }])
+    expect(view).toEqual({
+      serverId: 'build-01',
+      title: 'build-01',
+      destination: 'ci@build.internal',
+      projectDirectory: '/srv/yx',
+      transport: 'ssh',
+      recipeIds: ['compile', 'unit'],
+      declaredAt: '2026-02-03T04:05:06.000Z',
+    })
+  })
+
+  it('carries the operator’s optional values through instead of the defaults', async () => {
+    const { ctx } = await boot(await scratch())
+    const declared: unknown[] = []
+    ctx.provide('yxspecRemote', {
+      declare: async (_workspaceId: string, server: unknown) => {
+        declared.push(server)
+        return {
+          workspaceId: 'p1',
+          ...server as Record<string, unknown>,
+          serverId: (server as { id: string }).id,
+          declaredAt: '2026-02-03T04:05:06.000Z',
+        }
+      },
+    } as never)
+
+    await ctx.yxspecRemoteController.declareServer('p1', {
+      serverId: 'aosp',
+      title: '  构建机  ',
+      destination: 'ci@aosp',
+      projectDirectory: '/srv/aosp',
+      captureRevision: true,
+      recipes: [{ id: 'ninja', command: 'ninja -C {cwd} OUT={out}', outputDirectory: '/srv/aosp-out' }],
+      timeoutMs: 60_000,
+      sshExecutable: '/usr/bin/ssh',
+    })
+
+    expect(declared).toEqual([{
+      id: 'aosp',
+      title: '构建机',
+      destination: 'ci@aosp',
+      projectDirectory: '/srv/aosp',
+      captureRevision: true,
+      transport: 'ssh',
+      recipes: { ninja: { command: 'ninja -C {cwd} OUT={out}', outputDirectory: '/srv/aosp-out' } },
+      sshExecutable: '/usr/bin/ssh',
+      timeoutMs: 60_000,
+    }])
+  })
+
+  it('fails loudly when the deployment mounts no build-server service', async () => {
+    const { ctx } = await boot(await scratch())
+    // Unlike the list, which answers "none declared", a declaration that landed nowhere would
+    // look to the operator exactly like one that landed and was not shown.
+    try {
+      await ctx.yxspecRemoteController.declareServer('p1', {
+        serverId: 'build-01',
+        destination: 'ci@build.internal',
+        projectDirectory: '/srv/yx',
+        recipes: [{ id: 'compile', command: 'make' }],
+      })
+      throw new Error('expected the call to fail')
+    } catch (error) {
+      expect(remoteErrorOf(error)?.code).toBe('yxspecRemote/service-unavailable')
+    }
+  })
+
+  it('reports the service’s own reason for refusing a declaration', async () => {
+    const { ctx } = await boot(await scratch())
+    ctx.provide('yxspecRemote', {
+      declare: async () => {
+        throw new Error("server 'build-01' projectDirectory must be an absolute server path")
+      },
+    } as never)
+
+    try {
+      await ctx.yxspecRemoteController.declareServer('p1', {
+        serverId: 'build-01',
+        destination: 'ci@build.internal',
+        projectDirectory: 'srv/yx',
+        recipes: [{ id: 'compile', command: 'make' }],
+      })
+      throw new Error('expected the call to fail')
+    } catch (error) {
+      expect(remoteErrorOf(error)?.code).toBe('yxspecRemote/rejected')
+      // The message is the operator's only account of what to fix, so it survives the hop.
+      expect((error as Error).message).toContain('projectDirectory must be an absolute server path')
+    }
+  })
+
+  it('reports what a probe of a declared server found', async () => {
+    const { ctx } = await boot(await scratch())
+    const asked: string[] = []
+    ctx.provide('yxspecRemote', {
+      probe: async (workspaceId: string, serverId: string) => {
+        asked.push(`${workspaceId}:${serverId}`)
+        return { serverId, reachable: true, outputPresent: false, platform: 'Linux' }
+      },
+    } as never)
+
+    await expect(ctx.yxspecRemoteController.probeServer('p1', 'build-01')).resolves.toEqual({
+      serverId: 'build-01', reachable: true, outputPresent: false, platform: 'Linux',
+    })
+    expect(asked).toEqual(['p1:build-01'])
+  })
+
+  it('carries a directory listing back from the host, with no project involved', async () => {
+    // The one call here that names a destination rather than a declaration: the operator browses
+    // before the declaration exists, so there is no project id to require.
+    const { ctx } = await boot(await scratch())
+    const asked: unknown[] = []
+    ctx.provide('yxspecRemote', {
+      browse: async (request: unknown) => {
+        asked.push(request)
+        return {
+          directory: '/users/builder',
+          parent: '/users',
+          entries: ['projects', 'projects/aosp'],
+          depth: 2,
+          truncated: false,
+        }
+      },
+    } as never)
+
+    await expect(ctx.yxspecRemoteController.browseServer({ destination: 'builder@farm' })).resolves.toEqual({
+      directory: '/users/builder',
+      parent: '/users',
+      entries: ['projects', 'projects/aosp'],
+      depth: 2,
+      truncated: false,
+    })
+    expect(asked).toEqual([{ destination: 'builder@farm' }])
+  })
+
+  it('reports a host that refused a listing, rather than an empty directory', async () => {
+    const { ctx } = await boot(await scratch())
+    ctx.provide('yxspecRemote', {
+      browse: async () => { throw new Error("browse directory must be an absolute server path, got 'srv/x'") },
+    } as never)
+
+    try {
+      await ctx.yxspecRemoteController.browseServer({ destination: 'builder@farm', directory: 'srv/x' })
+      throw new Error('expected the call to fail')
+    } catch (error) {
+      expect(remoteErrorOf(error)?.code).toBe('yxspecRemote/rejected')
+      expect((error as Error).message).toContain('must be an absolute server path')
+    }
+  })
+
+  it('fails loudly when a deployment mounts no build-server service to browse', async () => {
+    const { ctx } = await boot(await scratch())
+    try {
+      await ctx.yxspecRemoteController.browseServer({ destination: 'builder@farm' })
+      throw new Error('expected the call to fail')
+    } catch (error) {
+      expect(remoteErrorOf(error)?.code).toBe('yxspecRemote/service-unavailable')
+    }
+  })
+
+  it('fails loudly when a deployment mounts no build-server service to probe', async () => {
+    const { ctx } = await boot(await scratch())
+    try {
+      await ctx.yxspecRemoteController.probeServer('p1', 'build-01')
+      throw new Error('expected the call to fail')
+    } catch (error) {
+      expect(remoteErrorOf(error)?.code).toBe('yxspecRemote/service-unavailable')
+    }
+  })
+
+  it('carries the service\'s own words when it refuses to probe an unknown server', async () => {
+    const { ctx } = await boot(await scratch())
+    ctx.provide('yxspecRemote', {
+      probe: async () => {
+        throw new Error("project 'p1' declares no build server 'ghost'; known: build-01")
+      },
+    } as never)
+
+    try {
+      await ctx.yxspecRemoteController.probeServer('p1', 'ghost')
+      throw new Error('expected the call to fail')
+    } catch (error) {
+      expect(remoteErrorOf(error)?.code).toBe('yxspecRemote/rejected')
+      expect((error as Error).message).toContain("declares no build server 'ghost'")
+    }
+  })
+
+  it('refuses a probe when no project was named', async () => {
+    const { ctx } = await boot(await scratch())
+    try {
+      await ctx.yxspecRemoteController.probeServer('', 'build-01')
+      throw new Error('expected the call to fail')
+    } catch (error) {
+      expect(remoteErrorOf(error)?.code).toBe('yxspecRemote/no-project')
+    }
+  })
+
+  it('refuses a declaration when no project was named', async () => {
+    const { ctx } = await boot(await scratch())
+    try {
+      await ctx.yxspecRemoteController.declareServer('', {
+        serverId: 'build-01',
+        destination: 'ci@build.internal',
+        projectDirectory: '/srv/yx',
+        recipes: [{ id: 'compile', command: 'make' }],
+      })
       throw new Error('expected the call to fail')
     } catch (error) {
       expect(remoteErrorOf(error)?.code).toBe('yxspecRemote/no-project')

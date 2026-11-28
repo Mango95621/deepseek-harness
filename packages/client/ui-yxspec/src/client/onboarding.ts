@@ -59,6 +59,15 @@ export interface OnboardingAnswers {
   /** Project-relative path of the chosen specification document. */
   readonly specificationPath?: string
   /**
+   * Whether the operator left the specification for later.
+   *
+   * A specification is often delivered after the project is set up, and a walk that refused to
+   * finish without one would hold the Conversation shut over a document nobody has yet. Skipping is
+   * therefore an answer — recorded like one, so the gate opens — while leaving the step itself
+   * reachable: the trail reopens it, and a document chosen later overwrites the skip.
+   */
+  readonly specificationDeferred?: boolean
+  /**
    * Which declared root the specification sits in, by index (`0` is the primary root).
    *
    * A project spans several repositories, so a project-relative path alone does not identify a
@@ -273,7 +282,9 @@ export function stepSatisfied(step: OnboardingStep, progress: OnboardingProgress
   const answers = progress?.answers ?? {}
   switch (step) {
     case 'specification':
-      return (answers.specificationPath?.length ?? 0) > 0
+      // A deferred choice answers the step as fully as a document does: both mean the operator has
+      // said what this run is against, or that there is nothing to say yet.
+      return (answers.specificationPath?.length ?? 0) > 0 || answers.specificationDeferred === true
     case 'project':
       return (answers.projectTitle?.trim().length ?? 0) > 0
     case 'repositories':

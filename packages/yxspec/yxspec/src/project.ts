@@ -29,7 +29,45 @@ import { existsSync } from 'node:fs'
 import { join } from 'node:path'
 
 /** Where a project states that it runs a YXSpec process, relative to a project root. */
-export const PROJECT_CONFIG_PATH = 'project/config/yxspec.json'
+export const PROJECT_CONFIG_PATH = 'yxspec.json'
+
+/**
+ * The location a project's YXSpec declaration occupied before the root-level file.
+ *
+ * Kept as a fallback rather than dropped: a project set up under the older layout is
+ * not wrong, and the one read both this predicate and the wizard's enumeration depend
+ * on would otherwise report a fully declared project as unconfigured. The root file
+ * wins when both are present, so migrating is an act of adding a file rather than
+ * removing one — and a deployment that only ever wrote the nested path keeps working.
+ */
+export const LEGACY_PROJECT_CONFIG_PATH = 'project/config/yxspec.json'
+
+/**
+ * The declarative candidates, in the order they are consulted.
+ *
+ * The first is the project root, which is where a project's own statement about itself
+ * belongs: it sits beside the tree it describes rather than under a `project/` scaffold
+ * a documentation repository has no reason to carry. The second is the older nested
+ * location, admitted so a project written before the move still answers.
+ */
+export const PROJECT_CONFIG_CANDIDATES = [PROJECT_CONFIG_PATH, LEGACY_PROJECT_CONFIG_PATH] as const
+
+/**
+ * Resolve the project's YXSpec declaration, or `undefined` when it declares none.
+ *
+ * One resolution function rather than a list each caller walks: the predicate above, the
+ * wizard's document enumeration, and the identity seed all have to agree on *which* file
+ * a project carries, and a copy of the ordering in each is three chances to disagree.
+ * @param root - an absolute project root.
+ * @returns the absolute path of the first candidate that exists, or undefined.
+ */
+export function resolveProjectConfigPath(root: string): string | undefined {
+  for (const relative of PROJECT_CONFIG_CANDIDATES) {
+    const absolute = join(root, relative)
+    if (existsSync(absolute)) return absolute
+  }
+  return undefined
+}
 
 /**
  * Whether one project root declares a YXSpec process.
@@ -43,7 +81,7 @@ export const PROJECT_CONFIG_PATH = 'project/config/yxspec.json'
  * @returns true when the root carries the project's YXSpec config.
  */
 export function declaresYxspecProcess(root: string): boolean {
-  return existsSync(join(root, PROJECT_CONFIG_PATH))
+  return resolveProjectConfigPath(root) !== undefined
 }
 
 /**

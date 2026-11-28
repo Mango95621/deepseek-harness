@@ -50,13 +50,24 @@ import type { ReactNode } from 'react'
 // `WorkspaceView` the hooks deliver arrives through `PropsRuntime`, so no import names it.
 import type { WorkspaceId } from '@deepseek-ai/dsh-api-workspace-controller/types'
 import {
-  Button, IconCheckOutlineRegular, IconFolderOpenRegular, IconPlusOutlineRegular,
+  Button, Checkbox, IconCheckOutlineRegular, IconFolderOpenRegular, IconPlusOutlineRegular,
 } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { InjectFace, PropsLocale, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 import type { ObservableSnapshot } from '@deepseek-ai/dsh-client-store'
-import type { YxspecDocumentListing, YxspecDocumentView, YxspecRemoteServerView } from '@deepseek-ai/dsh-yxspec-api/types'
+import type {
+  YxspecDocumentListing,
+  YxspecDocumentView,
+  YxspecRemoteBrowse,
+  YxspecRemoteBrowseRequest,
+  YxspecRemoteProbe,
+  YxspecRemoteServerDraft,
+  YxspecRemoteServerView,
+} from '@deepseek-ai/dsh-yxspec-api/types'
 import type { NS } from './locales.ts'
 import { resolveOnboardingProject } from './project.ts'
+// The status wording is shared with the Session panel's section, so the two surfaces cannot
+// describe one declaration differently.
+import { ServerStateDot } from './ServerStateDot.tsx'
 import {
   EMPTY_PROGRESS, ONBOARDING_STEPS, completeStep, currentStep, onboardingProgress, reopenStep, stepSatisfied,
   type OnboardingAnswers, type OnboardingProgress, type OnboardingState, type OnboardingStep,
@@ -127,6 +138,40 @@ export interface OnboardingWizardInjected {
    * @returns the declarations; empty when nothing is declared or the plugin is absent.
    */
   readonly loadServers: (workspaceId: string) => Promise<YxspecRemoteServerView[]>
+  /**
+   * Declare or replace one build server for a project.
+   *
+   * The step declares through the host rather than collecting a draft for later, because the
+   * declaration is what a run resolves against: a server the operator typed but never stored
+   * would let the walk finish declaring a build server that no `remote_build` call can find.
+   * @param workspaceId - the project the declaration belongs to.
+   * @param draft - the declaration the operator submitted.
+   * @returns the stored declaration, as the step's list renders it.
+   */
+  readonly declareServer: (
+    workspaceId: string,
+    draft: YxspecRemoteServerDraft,
+  ) => Promise<YxspecRemoteServerView>
+  /**
+   * Test one declared build server and report what the host answered.
+   *
+   * Separate from {@link loadServers} because it costs an SSH round trip: the step calls it when the
+   * operator asks, and once after a declaration lands, rather than on every list render.
+   * @param workspaceId - the project that declared the server.
+   * @param serverId - the declaration to test.
+   * @returns what the probe concluded; an unreachable host is reported, not thrown.
+   */
+  readonly probeServer: (workspaceId: string, serverId: string) => Promise<YxspecRemoteProbe>
+  /**
+   * List the directories under one path on a server, so the wizard can offer them instead of asking
+   * for a path.
+   *
+   * Named by a destination rather than a declaration, and that is the point: the operator picks the
+   * directory before the declaration that would name it exists.
+   * @param request - the destination to reach and the directory to list.
+   * @returns the listing; an unreachable host or a missing path is reported inside it, not thrown.
+   */
+  readonly browseServer: (request: YxspecRemoteBrowseRequest) => Promise<YxspecRemoteBrowse>
   /**
    * Name the project this walk is about, creating it when the walk has none yet.
    *
@@ -242,9 +287,22 @@ export function OnboardingWizard(props: OnboardingWizardProps): ReactNode {
   const [busy, setBusy] = useState(false)
   const [notice, setNotice] = useState<string | undefined>(undefined)
 
+  // The blank home is where the operator asks "will this build?" before typing anything, and it
+  // is also the only surface a project has before its first Session — so the build servers the
+  // project declared are reported here, under the composer, and nowhere else requires the
+  // operator to know where a panel lives.
+  const buildServers = hero ? (
+    <BuildServerStrip
+      projectId={projectId}
+      loadServers={props.loadServers}
+      probeServer={props.probeServer}
+      t={t}
+    />
+  ) : null
+
   // The gate's open branch, and it must be exact: rendering the wizard over an onboarded
   // project would hide a live composer behind a form.
-  if (!hero || step === undefined) return children
+  if (!hero || step === undefined) return <>{children}{buildServers}</>
 
   const shown = revisit ?? step
   const complete = (answers: OnboardingAnswers): void => {
@@ -338,6 +396,75 @@ export function OnboardingWizard(props: OnboardingWizardProps): ReactNode {
         </footer>
         {notice !== undefined ? <p className={css.unavailable}>{notice}</p> : null}
       </section>
+    </div>
+  )
+}
+
+/**
+ * The build servers the blank home's project declared, with what their last test concluded.
+ *
+ * The strip exists because the blank home is where a build is about to be asked for: the operator
+ * types "build the IVI image" here, and whether the machine that would compile it is reachable is a
+ * fact they need before typing rather than after failing. It renders nothing at all for a project
+ * that declared no server, so a deployment that builds locally never grows a heading it cannot fill.
+ *
+ * The state is the host's: every test writes its outcome onto the declaration, and the strip re-reads
+ * the list afterwards, so the line describes the last attempt rather than the last success.
+ */
+function BuildServerStrip({ projectId, loadServers, probeServer, t }: {
+  projectId: WorkspaceId | undefined
+  loadServers: OnboardingWizardInjected['loadServers']
+  probeServer: OnboardingWizardInjected['probeServer']
+  t: OnboardingWizardProps['t']
+}): ReactNode {
+  const [servers, setServers] = useState<readonly YxspecRemoteServerView[]>([])
+  const [probing, setProbing] = useState<string | undefined>(undefined)
+  const [reload, setReload] = useState(0)
+
+  useEffect(() => {
+    if (projectId === undefined) {
+      setServers([])
+      return
+    }
+    let live = true
+    void loadServers(projectId).then(
+      (value) => { if (live) setServers(value) },
+      // An absent build-server namespace is not a failure here: the strip shows nothing.
+      () => { if (live) setServers([]) },
+    )
+    return () => { live = false }
+  }, [loadServers, projectId, reload])
+
+  if (servers.length === 0) return null
+  return (
+    <div className={css.buildServers}>
+      {servers.map(server => (
+        <span key={server.serverId} className={css.buildServer}>
+          <span className={css.buildServerName}>
+            {t('section.servers')}
+            {' · '}
+            {server.title || server.serverId}
+          </span>
+          <ServerStateDot server={server} t={t} className={css.buildServerState} />
+          <Button
+            variant="ghost"
+            disabled={probing !== undefined}
+            onClick={() => {
+              /* v8 ignore next -- the strip renders only for a resolved project, so this guard is
+               * a second line of defence rather than a live path. */
+              if (projectId === undefined) return
+              setProbing(server.serverId)
+              void probeServer(projectId, server.serverId).then(
+                () => { setProbing(undefined); setReload(count => count + 1) },
+                // A refused call leaves the stored state as it was; this strip owns no notice surface.
+                () => { setProbing(undefined) },
+              )
+            }}
+          >
+            {t('server.probe')}
+          </Button>
+        </span>
+      ))}
     </div>
   )
 }
@@ -569,7 +696,7 @@ function RepositoriesStep({
  * diagnosis. A path the operator recognizes as wrong tells them to go back; the convention
  * paths they do not recognize tell them what this deployment expects instead.
  *
- * Not every specification tree is inside the project, which the diagnosis above cannot help
+ * Not every specification tree is inside the project, and one may not exist yet, which the diagnosis above cannot help
  * with: a shared document folder or a delivered package sits beside the repositories, and no
  * amount of reading the search report will make the host find it. So the step also lets the
  * operator point at one directly, and the widening is a *retry* rather than a separate
@@ -668,6 +795,9 @@ function SpecificationStep({
                             onComplete({
                               specificationPath: document.path,
                               specificationRootIndex: document.rootIndex,
+                              // Choosing and deferring answer the same question, so taking a
+                              // document withdraws a deferral this record may already carry.
+                              specificationDeferred: false,
                             })
                           }}
                         >
@@ -696,6 +826,27 @@ function SpecificationStep({
               {/* Open by default exactly when the list is empty: that is the case where the
                * search report is the explanation rather than a footnote. */}
               <SearchedPaths searched={searched} initialOpen={documents.length === 0} t={t} />
+              <div className={css.extra}>
+                <p className={css.hint}>{t('wizard.step.specification.deferHint')}</p>
+                <div className={css.actionsEnd}>
+                  <Button
+                    variant="outline"
+                    disabled={busy}
+                    onClick={() => {
+                      onComplete({
+                        specificationDeferred: true,
+                        // The other direction of the same exclusivity: a deferral withdraws a document
+                        // chosen earlier, so the record never claims both. Blank rather than absent,
+                        // because the record merges answers and an absent key would leave the old
+                        // choice standing; a blank path already reads as "none chosen".
+                        specificationPath: '',
+                      })
+                    }}
+                  >
+                    {t('wizard.step.specification.defer')}
+                  </Button>
+                </div>
+              </div>
             </>
           )}
     </>
@@ -797,9 +948,35 @@ function isChosen(document: YxspecDocumentView, progress: OnboardingProgress): b
     && progress.answers.specificationRootIndex === document.rootIndex
 }
 
-/** Step 4: whether a build server is declared; declaring one stays a tool call. */
-function ServerStep({ projectId, onComplete, loadServers, t }: StepProps): ReactNode {
+/**
+ * Step 4: the build server the project compiles on, declared here or not at all.
+ *
+ * Declaring used to be the Conversation's job, which made this step a status page with a
+ * forward button: an operator who reached it with no server had to leave the walk, ask an
+ * agent for a declaration, and come back. The step therefore carries the declaration itself,
+ * over the same host operation `remote_server_declare` calls.
+ *
+ * The form asks for every field the record holds, including the recipe list, because the
+ * recipes are the allowlist a run may choose from — a declaration without one could never
+ * have a run requested against it, so the host refuses it too.
+ *
+ * Forward is one control, not two. "Declare nothing and continue" is the same act whether or
+ * not the project already declares a server, and two buttons that both just advance invite
+ * the operator to look for a difference that is not there; the label follows the state
+ * instead, so the button says what it will do.
+ */
+function ServerStep({
+  projectId, busy, setBusy, setNotice, onComplete, loadServers, declareServer, probeServer, browseServer, t,
+}: StepProps): ReactNode {
   const [servers, setServers] = useState<readonly YxspecRemoteServerView[] | undefined>(undefined)
+  const [draft, setDraft] = useState<ServerDraft | undefined>(undefined)
+  const [declaring, setDeclaring] = useState(false)
+  /** The declaration currently being tested, so its own row can say so and refuse a second click. */
+  const [probing, setProbing] = useState<string | undefined>(undefined)
+  // Bumped after each declaration, which re-runs the read below: the list is the host's answer,
+  // so a declaration shows up by being read back rather than by being appended, and a
+  // re-declaration under an existing id replaces its row instead of appearing twice.
+  const [declared, setDeclared] = useState(0)
 
   useEffect(() => {
     if (projectId === undefined) return
@@ -810,40 +987,603 @@ function ServerStep({ projectId, onComplete, loadServers, t }: StepProps): React
       () => { if (live) setServers([]) },
     )
     return () => { live = false }
-  }, [loadServers, projectId])
+  }, [declared, loadServers, projectId])
+
+  const submit = async (): Promise<void> => {
+    /* v8 ignore next -- the control is disabled while no project is resolved, so this guard is
+     * a second line of defence rather than a live path. */
+    if (projectId === undefined || draft === undefined) return
+    setBusy(true)
+    setDeclaring(true)
+    setNotice(undefined)
+    try {
+      const stored = await declareServer(projectId, toDraft(draft))
+      setDraft(undefined)
+      setNotice(t('wizard.step.server.saved', { id: stored.serverId }))
+      setDeclared(count => count + 1)
+      // Tested without blocking the form: the declaration is already durable, and the row reports
+      // the outcome when it lands — which is exactly what "added, does it connect?" asks for.
+      void test(stored.serverId)
+    } catch (error) {
+      // The host refuses a declaration with a message naming the field at fault, and the form
+      // stays open over it so the operator can correct that field rather than retype the rest.
+      setNotice(messageOf(error))
+    } finally {
+      setDeclaring(false)
+      setBusy(false)
+    }
+  }
+
+  /**
+   * Test one declaration and fold the answer back into the list.
+   *
+   * A host that refuses the call is reported as the step's notice; a host that answers "no" is not a
+   * refusal at all — the probe stores that outcome on the declaration, so re-reading the list is what
+   * puts it on the row.
+   * @param serverId - the declaration to test.
+   */
+  const test = async (serverId: string): Promise<void> => {
+    /* v8 ignore next -- the control is disabled while no project is resolved, so this guard is a
+     * second line of defence rather than a live path. */
+    if (projectId === undefined) return
+    setProbing(serverId)
+    setNotice(undefined)
+    try {
+      await probeServer(projectId, serverId)
+    } catch (error) {
+      setNotice(messageOf(error))
+    } finally {
+      setProbing(undefined)
+      setDeclared(count => count + 1)
+    }
+  }
 
   return (
     <>
       <StepHead title={t('wizard.step.server.title')} hint={t('wizard.step.server.hint')} />
       {servers === undefined
-        ? <p className={css.hint}>{t('wizard.step.specification.loading')}</p>
+        ? <p className={css.hint}>{t('wizard.step.server.loading')}</p>
         : servers.length === 0
-          ? (
-            <p className={css.empty}>
-              {t('wizard.step.server.empty')}
-              {' '}
-              {t('wizard.step.server.declare')}
-            </p>
-          )
+          ? <p className={css.empty}>{t('wizard.step.server.empty')}</p>
           : (
             <ul className={css.list}>
               {servers.map(server => (
                 <li key={server.serverId} className={css.row}>
                   <span className={css.rowTitle} title={server.destination}>{server.title || server.serverId}</span>
-                  <span className={css.rowMeta}>{server.transport}</span>
+                  <span className={css.rowMeta}>{server.destination}</span>
+                  {/* The state is what the host last recorded, so it survives a reload and a
+                   * re-render; its timestamp rides on the dot's tooltip rather than taking a line. */}
+                  <ServerStateDot server={server} t={t} className={css.rowMeta} />
+                  <Button
+                    variant="ghost"
+                    disabled={busy || probing !== undefined}
+                    onClick={() => { void test(server.serverId) }}
+                  >
+                    {t('server.probe')}
+                  </Button>
                 </li>
               ))}
             </ul>
           )}
+      {draft === undefined
+        ? (
+          <div className={css.extra}>
+            <p className={css.hint}>{t('wizard.step.server.declare')}</p>
+            <div className={css.actionsEnd}>
+              <Button
+                variant="outline"
+                disabled={busy || servers === undefined}
+                onClick={() => { setNotice(undefined); setDraft(emptyServerDraft()) }}
+              >
+                {t('wizard.step.server.add')}
+              </Button>
+            </div>
+          </div>
+        )
+        : (
+          <ServerForm
+            draft={draft}
+            declaring={declaring}
+            onChange={setDraft}
+            onCancel={() => { setNotice(undefined); setDraft(undefined) }}
+            onSubmit={() => { void submit() }}
+            browseServer={browseServer}
+            t={t}
+          />
+        )}
       <div className={css.actionsEnd}>
-        <Button variant="outline" disabled={servers === undefined} onClick={() => { onComplete({ serverResolved: true }) }}>
-          {t('wizard.skip')}
-        </Button>
-        <Button variant="primary" disabled={servers === undefined} onClick={() => { onComplete({ serverResolved: true }) }}>
-          {t('wizard.next')}
+        <Button
+          variant="primary"
+          disabled={busy || servers === undefined}
+          onClick={() => { onComplete({ serverResolved: true }) }}
+        >
+          {servers !== undefined && servers.length > 0 ? t('wizard.next') : t('wizard.skip')}
         </Button>
       </div>
     </>
+  )
+}
+
+/** The form's own state: every field as typed, before the host resolves its defaults. */
+interface ServerDraft {
+  readonly serverId: string
+  /** The login the operator connects as; half of the destination. */
+  readonly username: string
+  /** The machine to reach, as an address or a resolvable name; the other half. */
+  readonly host: string
+  readonly projectDirectory: string
+  readonly captureRevision: boolean
+  /**
+   * One row per recipe. The output directory sits on the row rather than on the form because it
+   * belongs to the compile being described: a whole build and a module build of one tree write
+   * their products to different places.
+   */
+  readonly recipes: readonly {
+    readonly id: string
+    readonly command: string
+    readonly outputDirectory: string
+  }[]
+  readonly timeoutMs: string
+  readonly sshExecutable: string
+}
+
+/**
+ * The OpenSSH destination the two fields add up to.
+ *
+ * Composed here rather than typed by the operator: it is one string with a syntax, and the only
+ * thing they know is who they are and which machine they mean. An empty half yields no
+ * destination at all rather than a malformed one, so the form is incomplete instead of wrong.
+ * @param draft - the form's state.
+ * @returns `user@host`, or `''` while either half is missing.
+ */
+function destinationOf(draft: ServerDraft): string {
+  const username = draft.username.trim()
+  const host = draft.host.trim()
+  return username.length === 0 || host.length === 0 ? '' : `${username}@${host}`
+}
+
+/**
+ * A blank form with one recipe row.
+ *
+ * One empty recipe rather than none: the host refuses a declaration without a recipe, so a
+ * form that opened with an empty list would present a submit the operator could not satisfy
+ * without first discovering the add control.
+ * @returns the initial draft.
+ */
+function emptyServerDraft(): ServerDraft {
+  return {
+    serverId: '', username: '', host: '', projectDirectory: '',
+    captureRevision: false, recipes: [{ id: '', command: '', outputDirectory: '' }],
+    timeoutMs: '', sshExecutable: '',
+  }
+}
+
+/**
+ * Resolve the typed form into the declaration the host stores.
+ *
+ * Blank optional fields are dropped rather than sent as empty strings: the host defaults a
+ * missing timeout, label, and output directory, while an empty string would travel as a value —
+ * an `sshExecutable` of `''` is a path no run can execute, and an `outputDirectory` of `''` is
+ * not the default but a directory named nothing.
+ * @param draft - the form's state.
+ * @returns the declaration to submit.
+ */
+function toDraft(draft: ServerDraft): YxspecRemoteServerDraft {
+  const timeoutMs = Number.parseInt(draft.timeoutMs.trim(), 10)
+  const sshExecutable = draft.sshExecutable.trim()
+  return {
+    serverId: draft.serverId.trim(),
+    // The two halves the operator typed, joined here rather than by them: an OpenSSH destination
+    // is one string, and asking a person to assemble it is asking them to get a syntax right for
+    // a tool they are not running.
+    destination: destinationOf(draft),
+    projectDirectory: draft.projectDirectory.trim(),
+    recipes: draft.recipes.map((recipe) => {
+      const outputDirectory = recipe.outputDirectory.trim()
+      return {
+        id: recipe.id.trim(),
+        command: recipe.command.trim(),
+        ...outputDirectory.length === 0 ? {} : { outputDirectory },
+      }
+    }),
+    ...draft.captureRevision ? { captureRevision: true } : {},
+    ...Number.isFinite(timeoutMs) ? { timeoutMs } : {},
+    ...sshExecutable.length === 0 ? {} : { sshExecutable },
+  }
+}
+
+/**
+ * Whether every field the host requires has been filled.
+ *
+ * The submit is disabled rather than refused, so this predicate and the host's own validation
+ * agree on what "complete" means: a blank id, destination, project directory, or recipe row is
+ * something the operator can see and fix here, while the rest — an absolute server path, a
+ * positive timeout — is the host's to report, because the rule is the service's.
+ * @param draft - the form's state.
+ * @returns whether the form may be submitted.
+ */
+function draftComplete(draft: ServerDraft): boolean {
+  return draft.serverId.trim().length > 0
+    && draft.username.trim().length > 0
+    && draft.host.trim().length > 0
+    && draft.projectDirectory.trim().length > 0
+    && draft.recipes.length > 0
+    && draft.recipes.every(recipe => recipe.id.trim().length > 0 && recipe.command.trim().length > 0)
+}
+
+/**
+ * The compile directory, chosen on the machine that holds it.
+ *
+ * Typing a server-side path from a developer machine is the step this replaces: the share a person
+ * browses their tree through and the path that machine sees are different strings, and the operator
+ * has no way to tell which one a declaration wants. Connecting first settles both questions at once —
+ * the destination is proven to reach a shell, and everything below it is something the operator
+ * recognizes rather than remembers.
+ *
+ * The listing is the host's: the first connect lands in the login directory, because that is where a
+ * shell starts and where a tree usually lives, and every step after it is a fresh read of one
+ * directory rather than a cached tree.
+ */
+function ServerDirectoryPicker({ draft, onChange, browseServer, t }: {
+  draft: ServerDraft
+  onChange: (draft: ServerDraft) => void
+  browseServer: OnboardingWizardInjected['browseServer']
+  t: OnboardingWizardProps['t']
+}): ReactNode {
+  const [held, setHeld] = useState<Readonly<Record<string, HeldDirectory>>>({})
+  const [here, setHere] = useState<HeldHere | undefined>(undefined)
+  /**
+   * Whether the listing shows. It opens on a read and closes when a directory is taken, so
+   * choosing ends the interaction the operator started instead of leaving a panel behind over a
+   * decision they have already made.
+   */
+  const [open, setOpen] = useState(false)
+  const [busy, setBusy] = useState(false)
+  const [failure, setFailure] = useState<string | undefined>(undefined)
+  const destination = destinationOf(draft)
+  const sshExecutable = draft.sshExecutable.trim()
+
+  /**
+   * Read one directory, or the login directory when none is named, and keep what it covered.
+   *
+   * One call carries several levels, so the entries are merged into what the picker already holds
+   * rather than replacing it as a single listing: navigating inside a level a call already answered
+   * for costs nothing, which is the difference between a click and a connection.
+   * @param directory - absolute directory to read; omitted reads the login directory.
+   */
+  const go = async (directory?: string): Promise<void> => {
+    if (destination.length === 0) return
+    setBusy(true)
+    setFailure(undefined)
+    try {
+      const listing = await browseServer({
+        destination,
+        ...directory === undefined ? {} : { directory },
+        ...sshExecutable.length === 0 ? {} : { sshExecutable },
+      })
+      setHeld(previous => mergeListing(previous, listing))
+      setOpen(true)
+      setHere({
+        directory: listing.directory,
+        ...listing.parent === undefined ? {} : { parent: listing.parent },
+        truncated: listing.truncated,
+        entryCount: listing.entries.filter(entry => !entry.includes('/')).length,
+        ...listing.error === undefined ? {} : { error: listing.error },
+      })
+    } catch (error) {
+      // A refused call is the host's own words about why, and the picker has no listing to show.
+      setFailure(messageOf(error))
+      setHere(undefined)
+      setHeld({})
+      setOpen(false)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  /**
+   * Move into one child, reading it only when nothing held already covers it.
+   * @param name - the child directory's name.
+   */
+  const enter = (name: string): void => {
+    /* v8 ignore next -- the rows render only inside a listing, which needs a current directory. */
+    if (here === undefined) return
+    const next = joinRemote(here.directory, name)
+    const cover = held[next]
+    if (cover !== undefined) {
+      const { children, truncated } = cover
+      setHere({ directory: next, parent: here.directory, truncated, entryCount: children.length } satisfies HeldHere)
+      return
+    }
+    void go(next)
+  }
+
+  const children = here === undefined ? [] : held[here.directory]?.children ?? []
+  return (
+    <div className={css.field}>
+      <span className={css.label}>{t('wizard.step.server.field.projectDirectory')}</span>
+      <div className={css.browseRow}>
+        <span className={css.browsePath}>
+          {draft.projectDirectory.length > 0
+            ? draft.projectDirectory
+            : t('wizard.step.server.directory.none')}
+        </span>
+        <Button
+          variant="outline"
+          disabled={busy || destination.length === 0}
+          onClick={() => { void go(here?.directory) }}
+        >
+          {busy
+            ? t('wizard.step.server.connecting')
+            : open
+              ? t('wizard.step.server.browse.refresh')
+              : draft.projectDirectory.length > 0
+                ? t('wizard.step.server.browse.change')
+                : t('wizard.step.server.connect')}
+        </Button>
+      </div>
+      {failure === undefined ? null : <p className={css.unavailable}>{failure}</p>}
+      {!open || here === undefined ? null : (
+        <div className={css.browse}>
+          <span className={css.browseCurrent}>
+            {t('wizard.step.server.browse.current', { path: here.directory })}
+          </span>
+          {here.error === undefined ? null : <p className={css.unavailable}>{here.error}</p>}
+          <div className={css.browseList}>
+            {here.parent === undefined ? null : (
+              <button
+                type="button"
+                className={css.browseEntry}
+                onClick={() => {
+                  // The parent is read like any other directory: what a call covered is held, and
+                  // going up may leave the covered part exactly as going down may.
+                  const parent = here.parent as string
+                  if (held[parent] === undefined) { void go(parent); return }
+                  const above = parentOf(parent)
+                  setHere({
+                    directory: parent,
+                    ...above === undefined ? {} : { parent: above },
+                    truncated: held[parent].truncated,
+                    entryCount: held[parent].children.length,
+                  })
+                }}
+              >
+                {t('wizard.step.server.browse.up')}
+              </button>
+            )}
+            {children.map(name => (
+              <button key={name} type="button" className={css.browseEntry} onClick={() => { enter(name) }}>
+                {name}
+              </button>
+            ))}
+          </div>
+          {here.error !== undefined || children.length > 0 ? null : <p className={css.hint}>{t('wizard.step.server.browse.empty')}</p>}
+          {here.truncated
+            ? <p className={css.hint}>{t('wizard.step.server.browse.truncated', { count: here.entryCount })}</p>
+            : null}
+          <div className={css.actionsEnd}>
+            <Button
+              variant="primary"
+              disabled={busy || here.error !== undefined}
+              onClick={() => {
+                onChange({ ...draft, projectDirectory: here.directory })
+                // Closed rather than left standing: the listing was opened to answer this one
+                // question, and the chosen path above it is the answer.
+                setOpen(false)
+              }}
+            >
+              {t('wizard.step.server.browse.choose')}
+            </Button>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+/** One directory the picker holds: what a call answered for, and whether it was cut short. */
+interface HeldDirectory {
+  /** Names directly below it, ready to render. */
+  readonly children: readonly string[]
+  /** Whether the call that produced it stopped at the entry ceiling. */
+  readonly truncated: boolean
+}
+
+/** Where the picker currently is, and what its own call did or did not produce. */
+interface HeldHere {
+  readonly directory: string
+  readonly parent?: string
+  readonly truncated: boolean
+  /** Direct children the listing held, which is the count a truncation notice reports. */
+  readonly entryCount: number
+  readonly error?: string
+}
+
+/**
+ * Fold one listing into what the picker holds.
+ *
+ * Each entry is a path below the listed directory, so every segment boundary between the two is
+ * a directory whose children this call also answered for. That is what makes descending free
+ * inside the covered part, and it is why the fold is by parent rather than by the listed root.
+ * @param held - what the picker already holds, keyed by absolute directory.
+ * @param listing - the call's answer.
+ * @returns the merged map.
+ */
+function mergeListing(
+  held: Readonly<Record<string, HeldDirectory>>,
+  listing: YxspecRemoteBrowse,
+): Readonly<Record<string, HeldDirectory>> {
+  const next: Record<string, string[]> = {}
+  const cut: Record<string, boolean> = {}
+  for (const entry of listing.entries) {
+    const segments = entry.split('/')
+    for (let at = 0; at < segments.length; at += 1) {
+      // `joinRemote` rather than a plain join: the listed directory may be the root, and `'/'` and a
+      // segment joined by hand would make `//srv`, a key no lookup ever asks for.
+      const parent = at === 0
+        ? listing.directory
+        : joinRemote(listing.directory, segments.slice(0, at).join('/'))
+      const name = segments[at] as string
+      const children = next[parent] ?? []
+      if (!children.includes(name)) children.push(name)
+      next[parent] = children
+      // The listed directory is the only one whose children the ceiling could have cut: the walk
+      // reports what it reached, and everything it reached inside is complete.
+      if (at === 0) cut[parent] = listing.truncated
+    }
+  }
+  const merged: Record<string, HeldDirectory> = { ...held }
+  for (const [directory, children] of Object.entries(next)) {
+    merged[directory] = { children, truncated: cut[directory] ?? false }
+  }
+  // A directory the call reached but found empty still belongs in the map, or the picker would
+  // ask for it again on the next click.
+  merged[listing.directory] = {
+    children: merged[listing.directory]?.children ?? [],
+    truncated: listing.truncated,
+  }
+  return merged
+}
+
+/**
+ * The absolute parent of one path, or undefined at the root.
+ * @param directory - an absolute POSIX directory.
+ * @returns the parent path, or undefined when there is nowhere to go up.
+ */
+function parentOf(directory: string): string | undefined {
+  if (directory === '/') return undefined
+  const cut = directory.lastIndexOf('/')
+  return cut <= 0 ? '/' : directory.slice(0, cut)
+}
+/**
+ * One path below another, POSIX-separated.
+ *
+ * The separator is written here rather than taken from `node:path`: these names came from a POSIX
+ * shell on the other side of an SSH connection, and the client's own platform says nothing about
+ * what that machine uses.
+ * @param directory - the absolute directory already listed.
+ * @param name - the child entry's name.
+ * @returns the child's absolute path.
+ */
+function joinRemote(directory: string, name: string): string {
+  return directory === '/' ? `/${name}` : `${directory}/${name}`
+}
+
+/** The declaration form: one labelled field per record field, and one row per recipe. */
+function ServerForm({ draft, declaring, onChange, onCancel, onSubmit, browseServer, t }: {
+  draft: ServerDraft
+  declaring: boolean
+  onChange: (draft: ServerDraft) => void
+  onCancel: () => void
+  onSubmit: () => void
+  browseServer: OnboardingWizardInjected['browseServer']
+  t: OnboardingWizardProps['t']
+}): ReactNode {
+  const field = (
+    label: string,
+    value: string,
+    update: (value: string) => void,
+    placeholder?: string,
+  ): ReactNode => (
+    <label className={css.field}>
+      <span className={css.label}>{label}</span>
+      <input
+        className={css.text}
+        value={value}
+        {...placeholder === undefined ? {} : { placeholder }}
+        onChange={(event) => { update(event.target.value) }}
+      />
+    </label>
+  )
+  const recipe = (
+    entry: { readonly id: string; readonly command: string; readonly outputDirectory: string },
+    index: number,
+  ): ReactNode => {
+    const edit = (patch: Partial<typeof entry>): void => {
+      onChange({ ...draft, recipes: draft.recipes.map((row, at) => at === index ? { ...row, ...patch } : row) })
+    }
+    return (
+      <div key={index} className={css.recipe}>
+        <input
+          className={css.text}
+          value={entry.id}
+          placeholder={t('wizard.step.server.recipe.id')}
+          onChange={(event) => { edit({ id: event.target.value }) }}
+        />
+        <input
+          className={css.text}
+          value={entry.command}
+          placeholder={t('wizard.step.server.recipe.command')}
+          onChange={(event) => { edit({ command: event.target.value }) }}
+        />
+        {/* The output directory is per recipe, so it sits on the row it belongs to: a whole build
+         * and a module build of one tree do not write their products to the same place. */}
+        <input
+          className={css.text}
+          value={entry.outputDirectory}
+          placeholder={t('wizard.step.server.recipe.output')}
+          onChange={(event) => { edit({ outputDirectory: event.target.value }) }}
+        />
+        <Button
+          variant="ghost"
+          disabled={draft.recipes.length === 1}
+          onClick={() => { onChange({ ...draft, recipes: draft.recipes.filter((_, at) => at !== index) }) }}
+        >
+          {t('wizard.step.server.recipe.remove')}
+        </Button>
+      </div>
+    )
+  }
+  const timeout = draft.timeoutMs.trim()
+  // A blank timeout means "the host's default"; anything else has to be a number the host can
+  // accept, because it refuses a non-positive or unparsable one and the operator would only
+  // learn that from the refusal.
+  const timeoutValid = timeout.length === 0 || Number.parseInt(timeout, 10) > 0
+  return (
+    <div className={css.extra}>
+      <p className={css.hint}>{t('wizard.step.server.formHint')}</p>
+      {field(t('wizard.step.server.field.id'), draft.serverId, (value) => { onChange({ ...draft, serverId: value }) }, t('wizard.step.server.placeholder.id'))}
+      {field(t('wizard.step.server.field.username'), draft.username, (value) => { onChange({ ...draft, username: value }) }, t('wizard.step.server.placeholder.username'))}
+      {field(t('wizard.step.server.field.host'), draft.host, (value) => { onChange({ ...draft, host: value }) }, t('wizard.step.server.placeholder.host'))}
+      {/* Chosen rather than typed: a path on a machine the operator is not sitting at is exactly the
+       * field people get wrong, and the connection that proves the destination works is the same one
+       * that can list what is on the other side. */}
+      <ServerDirectoryPicker draft={draft} onChange={onChange} browseServer={browseServer} t={t} />
+      <div className={css.field}>
+        <span className={css.label}>{t('wizard.step.server.recipes')}</span>
+        {draft.recipes.map(recipe)}
+        <div className={css.actionsEnd}>
+          <Button
+            variant="outline"
+            onClick={() => { onChange({ ...draft, recipes: [...draft.recipes, { id: '', command: '', outputDirectory: '' }] }) }}
+          >
+            {t('wizard.step.server.recipe.add')}
+          </Button>
+        </div>
+      </div>
+      {field(t('wizard.step.server.field.timeout'), draft.timeoutMs, (value) => { onChange({ ...draft, timeoutMs: value }) }, t('wizard.step.server.placeholder.timeout'))}
+      {field(t('wizard.step.server.field.ssh'), draft.sshExecutable, (value) => { onChange({ ...draft, sshExecutable: value }) })}
+      {/* A checkbox rather than a text field: the host treats anything but an explicit true as
+       * "do not capture", so the form must send a boolean and not a string it would have to parse. */}
+      <Checkbox
+        checked={draft.captureRevision}
+        onChange={(next) => { onChange({ ...draft, captureRevision: next }) }}
+        label={t('wizard.step.server.field.captureRevision')}
+        title={t('wizard.step.server.captureRevisionHint')}
+      />
+      <div className={css.actionsEnd}>
+        <Button variant="ghost" disabled={declaring} onClick={onCancel}>
+          {t('wizard.step.server.cancel')}
+        </Button>
+        <Button
+          variant="primary"
+          disabled={declaring || !draftComplete(draft) || !timeoutValid}
+          onClick={onSubmit}
+        >
+          {declaring ? t('wizard.step.server.declaring') : t('wizard.step.server.submit')}
+        </Button>
+      </div>
+    </div>
   )
 }
 
@@ -854,8 +1594,21 @@ function ServerStep({ projectId, onComplete, loadServers, t }: StepProps): React
  * the step renders what is being confirmed, and the footer owns the commit. See
  * {@link OnboardingWizard} for what the commit does beyond recording the step.
  */
-function ReadyStep({ progress, t }: StepProps): ReactNode {
+function ReadyStep({ progress, projectId, loadServers, t }: StepProps): ReactNode {
   const { answers } = progress
+  // The servers are read back rather than taken from the walk's own record: a step declares
+  // them on the host, and a summary that recited what the operator typed would keep claiming a
+  // server the host does not hold — the one thing a confirmation must not do.
+  const [servers, setServers] = useState<readonly YxspecRemoteServerView[]>([])
+  useEffect(() => {
+    if (projectId === undefined) return
+    let live = true
+    void loadServers(projectId).then(
+      (value) => { if (live) setServers(value) },
+      () => { if (live) setServers([]) },
+    )
+    return () => { live = false }
+  }, [loadServers, projectId])
   return (
     <>
       <StepHead title={t('wizard.step.ready.title')} hint={t('wizard.step.ready.hint')} />
@@ -863,7 +1616,17 @@ function ReadyStep({ progress, t }: StepProps): ReactNode {
         <li>{t('wizard.step.ready.summaryProject', { project: answers.projectTitle ?? '' })}</li>
         <li>{t('wizard.step.ready.summaryRepositories', { count: answers.repositories?.length ?? 0 })}</li>
         <li>{t('wizard.step.ready.summary', { specification: answers.specificationPath ?? '' })}</li>
-        <li>{t('wizard.step.ready.noServer')}</li>
+        <li>
+          {servers.length === 0
+            ? t('wizard.step.ready.noServer')
+            : t('wizard.step.ready.summaryServers', { count: servers.length })}
+        </li>
+        {/* One row per declared server under the count, rather than a joined sentence: the
+         * names are data, and the separator a sentence would need is copy this component does
+         * not own. */}
+        {servers.map(server => (
+          <li key={server.serverId} className={css.rowMeta}>{server.title || server.serverId}</li>
+        ))}
       </ul>
     </>
   )

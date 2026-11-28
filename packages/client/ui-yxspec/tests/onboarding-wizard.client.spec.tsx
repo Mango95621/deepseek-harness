@@ -24,10 +24,18 @@ import { allowAllAccess, bindSnapshotSelector, contextMenuHook, makeTranslate } 
 import type { WorkspaceId, WorkspaceSnapshot, WorkspaceView } from '@deepseek-ai/dsh-api-workspace-controller/client'
 import type { SessionListState, SessionSummary } from '@deepseek-ai/dsh-api-session-controller/client'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
-import type { YxspecDocumentListing, YxspecDocumentView, YxspecRemoteServerView } from '@deepseek-ai/dsh-yxspec-api/types'
+import type {
+  YxspecDocumentListing,
+  YxspecDocumentView,
+  YxspecRemoteBrowse,
+  YxspecRemoteBrowseRequest,
+  YxspecRemoteProbe,
+  YxspecRemoteServerDraft,
+  YxspecRemoteServerView,
+} from '@deepseek-ai/dsh-yxspec-api/types'
 import { OnboardingWizard, type OnboardingWizardProps } from '../src/client/OnboardingWizard.tsx'
 import {
-  EMPTY_PROGRESS, EMPTY_REQUEST, ONBOARDING_STEPS, completeStep,
+  EMPTY_PROGRESS, EMPTY_REQUEST, ONBOARDING_STEPS, completeStep, reopenStep,
   type OnboardingAnswers, type OnboardingProgress, type OnboardingRequest, type OnboardingState,
   type OnboardingStep, type OnboardingTarget,
 } from '../src/client/onboarding.ts'
@@ -250,6 +258,18 @@ interface Answers {
   documentsImpl: ((workspaceId: string, extraDirectories: readonly string[]) => Promise<YxspecDocumentListing>) | undefined
   /** A replacement declaration reader, consulted at call time. See {@link Answers.documentsImpl}. */
   serversImpl: ((workspaceId: string) => Promise<YxspecRemoteServerView[]>) | undefined
+  /** A refusal from the declaration write, read at call time so a retry can repair it. */
+  declareThrows: unknown
+  /** A refusal from the probe call, read at call time. */
+  probeThrows: unknown
+  /** A refusal from a directory listing, read at call time. */
+  browseThrows: unknown
+  /** A replacement listing, consulted at call time; the picker's own answer otherwise. */
+  browse: ((request: YxspecRemoteBrowseRequest) => YxspecRemoteBrowse) | undefined
+  /** The directory the default fake host walks to. */
+  path: string | undefined
+  /** What a probe concludes about the host; the reachable case unless a spec says otherwise. */
+  probeOutcome: YxspecRemoteProbe | undefined
 }
 
 interface BenchOptions {
@@ -275,6 +295,27 @@ interface BenchOptions {
   rootThrows?: unknown
   documentsThrow?: boolean
   serversThrow?: boolean
+  declareThrows?: unknown
+  probeThrows?: unknown
+  /** What the probe concludes; defaults to a reachable Linux host. */
+  probeOutcome?: YxspecRemoteProbe
+  browseThrows?: unknown
+  /** What a listing returns; defaults to the walk toward {@link BenchOptions.path}. */
+  browse?: (request: YxspecRemoteBrowseRequest) => YxspecRemoteBrowse
+  /** The absolute directory the default fake host walks to; defaults to `/srv/aosp`. */
+  path?: string
+}
+
+/** A walk that finished every step, which is the state the strip appears in. */
+function onboardedProgress(): OnboardingProgress {
+  return ONBOARDING_STEPS.reduce<OnboardingProgress>((progress, step) => completeStep(progress, step, {}), EMPTY_PROGRESS)
+}
+
+/** The absolute parent of one path, or undefined at the root. */
+function parentOf(directory: string): string | undefined {
+  if (directory === '/') return undefined
+  const cut = directory.lastIndexOf('/')
+  return cut <= 0 ? '/' : directory.slice(0, cut)
 }
 
 /** Props a spec hands the component, with the injection face behind a recording default. */
@@ -286,12 +327,19 @@ function bench(options: BenchOptions = {}) {
   const calls = {
     documents: [] as { workspaceId: string; extraDirectories: string[] }[],
     servers: [] as string[],
+    declared: [] as { workspaceId: string; draft: YxspecRemoteServerDraft }[],
+    probes: [] as { workspaceId: string; serverId: string }[],
+    browses: [] as YxspecRemoteBrowseRequest[],
     names: [] as { projectId: string | undefined; title: string }[],
     added: [] as { workspaceId: string; path: string }[],
     removed: [] as { workspaceId: string; path: string }[],
     picks: 0,
     finished: [] as string[],
   }
+  // The declarations the walk wrote, which is what the step reads back. The seam stores them in
+  // production, so the double has to as well: a spec could not otherwise see the list the step
+  // renders after a write, which is the whole of what declaring in the wizard does.
+  const stored: YxspecRemoteServerView[] = [...(options.servers ?? [])]
   const answers: Answers = {
     picks: options.picks ?? [],
     pickThrows: options.pickThrows,
@@ -301,6 +349,12 @@ function bench(options: BenchOptions = {}) {
     serversThrow: options.serversThrow ?? false,
     documentsImpl: undefined,
     serversImpl: undefined,
+    declareThrows: options.declareThrows,
+    probeThrows: options.probeThrows,
+    probeOutcome: options.probeOutcome,
+    browseThrows: options.browseThrows,
+    browse: options.browse,
+    path: options.path,
   }
   const props = {
     hero: options.hero ?? true,
@@ -331,7 +385,68 @@ function bench(options: BenchOptions = {}) {
       calls.servers.push(workspaceId)
       if (answers.serversImpl !== undefined) return answers.serversImpl(workspaceId)
       if (answers.serversThrow) return Promise.reject(new Error('no namespace'))
-      return Promise.resolve([...(options.servers ?? [])])
+      return Promise.resolve([...stored])
+    },
+    declareServer: async (workspaceId: string, draft: YxspecRemoteServerDraft) => {
+      calls.declared.push({ workspaceId, draft })
+      if (answers.declareThrows !== undefined) throw answers.declareThrows
+      // The host resolves the draft's optional fields and normalizes the directory, so the
+      // double does too: a spec asserting what the step renders after a write has to see the
+      // stored form rather than the typed one.
+      const view: YxspecRemoteServerView = {
+        serverId: draft.serverId,
+        title: draft.title ?? draft.serverId,
+        destination: draft.destination,
+        projectDirectory: draft.projectDirectory.replace(/\/+$/, ''),
+        transport: 'ssh',
+        recipeIds: draft.recipes.map(recipe => recipe.id).sort(),
+        declaredAt: '2026-02-03T04:05:06.000Z',
+      }
+      const at = stored.findIndex(server => server.serverId === view.serverId)
+      if (at < 0) stored.push(view)
+      else stored[at] = view
+      return view
+    },
+    browseServer: async (request: YxspecRemoteBrowseRequest) => {
+      calls.browses.push(request)
+      if (answers.browseThrows !== undefined) throw answers.browseThrows
+      if (answers.browse !== undefined) return answers.browse(request)
+      // A host that answers the way the picker expects: several levels per call, as relative paths,
+      // which is what lets the picker navigate what it holds instead of connecting per click.
+      const target = answers.path ?? '/srv/aosp'
+      const directory = request.directory ?? '/'
+      const at = {
+        directory,
+        ...parentOf(directory) === undefined ? {} : { parent: parentOf(directory) as string },
+        depth: 2,
+        truncated: false,
+      }
+      const prefix = directory === '/' ? '' : directory
+      if (target !== directory && !target.startsWith(`${prefix}/`)) return { ...at, entries: [] }
+      if (target === directory) return { ...at, entries: [] }
+      // Every segment from here to the target, as the one listing a real host would answer with.
+      const rest = target.slice(prefix.length + 1)
+      const segments = rest.split('/')
+      // No deeper than a real walk would go: a directory at the ceiling is reported, but its own
+      // children are not, which is exactly when the picker has to ask again.
+      const depth = request.depth ?? 2
+      const entries = segments.slice(0, depth).map((_, index) => segments.slice(0, index + 1).join('/'))
+      return { ...at, entries }
+    },
+    probeServer: async (workspaceId: string, serverId: string) => {
+      calls.probes.push({ workspaceId, serverId })
+      if (answers.probeThrows !== undefined) throw answers.probeThrows
+      const outcome = answers.probeOutcome ?? { serverId, reachable: true, platform: 'Linux' }
+      // The host stores the outcome on the declaration, so the double does too: the step renders
+      // its status from the list it reads back, not from the probe answer.
+      const at = stored.findIndex(server => server.serverId === serverId)
+      if (at >= 0) {
+        const server = stored[at] as YxspecRemoteServerView
+        stored[at] = outcome.reachable
+          ? { ...server, lastProbeAt: '2026-02-03T04:06:07.000Z', lastPlatform: outcome.platform ?? 'Linux' }
+          : { ...server, lastProbeAt: '2026-02-03T04:06:07.000Z', lastProbeError: outcome.error ?? 'unreachable' }
+      }
+      return outcome
     },
     nameProject: async (projectId: WorkspaceId | undefined, title: string) => {
       calls.names.push({ projectId, title })
@@ -1322,6 +1437,53 @@ describe('the specification step', () => {
     expect(b.calls.documents).toEqual([])
   })
 
+  it('lets the operator leave the specification for later', async () => {
+    // A specification is routinely delivered after the project is set up, and a walk that held the
+    // Conversation shut until one arrived would gate the work on a document nobody has.
+    const b = bench({ progress: { solo: beforeIt }, documents: [] })
+    render(<OnboardingWizard {...b.props} />)
+    await waitFor(() => { expect(screen.getByText(zh['wizard.step.specification.empty'])).toBeTruthy() })
+
+    fireEvent.click(screen.getByRole('button', { name: zh['wizard.step.specification.defer'] }))
+
+    const written = b.store.writes.at(-1)?.progress
+    expect(written?.answers.specificationDeferred).toBe(true)
+    expect(written?.completed).toContain('specification')
+  })
+
+  it('reopens for a document chosen after the deferral', async () => {
+    // "Add it later" is only an answer if the step can still be answered: the trail reopens it, and
+    // the deferral is recorded on the record this reads back.
+    const settled = completeStep(beforeIt, 'specification', { specificationDeferred: true })
+    const b = bench({ progress: { solo: reopenStep(settled, 'specification') }, documents })
+    render(<OnboardingWizard {...b.props} />)
+    await waitFor(() => { expect(screen.getByText('docs/spec.md')).toBeTruthy() })
+
+    fireEvent.click(screen.getByText('docs/spec.md'))
+
+    // The document answers the question the deferral answered, so the record cannot keep both.
+    const written = b.store.writes.at(-1)?.progress
+    expect(written?.answers.specificationPath).toBe('docs/spec.md')
+    expect(written?.answers.specificationDeferred).toBe(false)
+  })
+
+  it('withdraws a chosen document when the operator defers instead', async () => {
+    const settled = completeStep(beforeIt, 'specification', {
+      specificationPath: 'docs/spec.md', specificationRootIndex: 0,
+    })
+    const b = bench({ progress: { solo: reopenStep(settled, 'specification') }, documents })
+    render(<OnboardingWizard {...b.props} />)
+    await waitFor(() => { expect(screen.getByText('docs/spec.md')).toBeTruthy() })
+
+    fireEvent.click(screen.getByRole('button', { name: zh['wizard.step.specification.defer'] }))
+
+    // Blank rather than absent: the record merges answers, and an absent key would leave the
+    // withdrawn choice standing.
+    const written = b.store.writes.at(-1)?.progress
+    expect(written?.answers.specificationDeferred).toBe(true)
+    expect(written?.answers.specificationPath).toBe('')
+  })
+
   it('does not commit a document read that lands after unmount', async () => {
     let settle: (value: YxspecDocumentListing) => void = () => {}
     const b = bench({ progress: { solo: beforeIt } })
@@ -1350,7 +1512,7 @@ describe('the specification step', () => {
 describe('the server step', () => {
   const beforeIt = upTo('server', { projectTitle: 'ivi', repositories: ['/aosp'] })
   const declared: readonly YxspecRemoteServerView[] = [{
-    serverId: 'build-1', title: 'Build farm', destination: 'ci@farm', baseDirectory: '/srv/build',
+    serverId: 'build-1', title: 'Build farm', destination: 'ci@farm', projectDirectory: '/srv/build',
     transport: 'ssh', recipeIds: ['make'], declaredAt: '2026-01-01T00:00:00.000Z',
   }]
 
@@ -1359,7 +1521,9 @@ describe('the server step', () => {
     render(<OnboardingWizard {...b.props} />)
     await waitFor(() => { expect(screen.getByText('Build farm')).toBeTruthy() })
     expect(b.calls.servers).toEqual(['solo'])
-    expect(screen.getByText('ssh')).toBeTruthy()
+    // The row names where the server is, which is what tells two declared servers apart; the
+    // transport is `ssh` for every declaration the record can hold.
+    expect(screen.getByText('ci@farm')).toBeTruthy()
     fireEvent.click(nextButton())
     expect(b.store.writes.at(-1)?.progress.answers.serverResolved).toBe(true)
   })
@@ -1368,7 +1532,7 @@ describe('the server step', () => {
     render(<OnboardingWizard {...bench({
       progress: { solo: beforeIt },
       servers: [{
-        serverId: 'bare', title: '', destination: 'ci@host', baseDirectory: '/srv', transport: 'ssh',
+        serverId: 'bare', title: '', destination: 'ci@host', projectDirectory: '/srv', transport: 'ssh',
         recipeIds: [], declaredAt: '2026-01-01T00:00:00.000Z',
       }],
     }).props} />)
@@ -1435,7 +1599,10 @@ describe('the server step', () => {
     const view = render(<OnboardingWizard {...b.props} />)
     expect(shownStep(view.container)).toBe('server')
     expect(b.calls.servers).toEqual([])
-    fireEvent.click(nextButton())
+    // The forward control reads "skip" here — nothing has been read, so nothing is declared —
+    // and it is disabled, so the click cannot record "this project builds locally" for a
+    // project the step was never given.
+    fireEvent.click(screen.getByRole('button', { name: zh['wizard.skip'] }))
     expect(b.store.writes).toHaveLength(0)
   })
 
@@ -1444,6 +1611,482 @@ describe('the server step', () => {
     render(<OnboardingWizard {...b.props} />)
     await Promise.resolve()
     expect(b.calls.servers).toEqual([])
+  })
+})
+
+describe('declaring a server from the step', () => {
+  // The step is reachable with the first three steps recorded, which is the state a walk into
+  // it always arrives in.
+  const beforeIt = upTo('server', { projectTitle: 'ivi', repositories: ['/aosp'] })
+
+  /** Fill one labelled field of the open form. */
+  function fill(label: string, value: string): void {
+    fireEvent.change(screen.getByLabelText(label), { target: { value } })
+  }
+
+  /** Fill the first recipe row, which is the one a blank form opens with. */
+  function fillRecipe(id: string, command: string): void {
+    const [recipeId] = screen.getAllByPlaceholderText(zh['wizard.step.server.recipe.id'])
+    const [recipeCommand] = screen.getAllByPlaceholderText(zh['wizard.step.server.recipe.command'])
+    fireEvent.change(recipeId as HTMLInputElement, { target: { value: id } })
+    fireEvent.change(recipeCommand as HTMLInputElement, { target: { value: command } })
+  }
+
+  /**
+   * Connect, land on the server, and take the directory the fake host answers with.
+   *
+   * The path is no longer typed, so a spec chooses it the way an operator does: the connect control
+   * lists the login directory, and the listing carries an entry the spec navigates into until it
+   * reaches what it wants.
+   * @param path - the absolute directory the walk should end on.
+   */
+  async function chooseDirectory(b: ReturnType<typeof bench>, path: string): Promise<void> {
+    // The fake host answers the way a real one does — one level per call — so the spec names the
+    // tree it should hold and this walks it exactly as an operator would: connect, descend one
+    // segment at a time, then take the directory the walk ended on.
+    b.answers.path = path
+    fireEvent.click(screen.getByRole('button', { name: zh['wizard.step.server.connect'] }))
+    const segments = path.split('/').filter(segment => segment.length > 0)
+    let current = '/'
+    for (const segment of segments) {
+      const label = zh['wizard.step.server.browse.current'].replace('{path}', current)
+      await waitFor(() => { expect(screen.getByText(label)).toBeTruthy() })
+      fireEvent.click(screen.getByRole('button', { name: segment }))
+      current = current === '/' ? `/${segment}` : `${current}/${segment}`
+      // Awaited rather than asserted synchronously: a level the connect call already covered lands
+      // at once, and one below it lands after the single call that level costs, so waiting is the
+      // only form that is right for both. The walk spec pins which is which.
+      await waitFor(() => {
+        expect(screen.getByText(zh['wizard.step.server.browse.current'].replace('{path}', current))).toBeTruthy()
+      })
+    }
+    fireEvent.click(screen.getByRole('button', { name: zh['wizard.step.server.browse.choose'] }))
+  }
+
+  /** Open the form, which is where the declaration is made. */
+  async function openForm(): Promise<void> {
+    await waitFor(() => { expect(screen.getByText(zh['wizard.step.server.empty'])).toBeTruthy() })
+    fireEvent.click(screen.getByRole('button', { name: zh['wizard.step.server.add'] }))
+  }
+
+  it('declares the filled-in server and lists what the host stored', async () => {
+    const b = bench({ progress: { solo: beforeIt } })
+    render(<OnboardingWizard {...b.props} />)
+    await openForm()
+
+    fill(zh['wizard.step.server.field.id'], 'aosp-builder')
+    fill(zh['wizard.step.server.field.username'], 'ci')
+    fill(zh['wizard.step.server.field.host'], 'build.internal')
+    await chooseDirectory(b, '/srv/builds')
+    fillRecipe('ninja', 'ninja -C {cwd}')
+    fireEvent.click(screen.getByRole('button', { name: zh['wizard.step.server.submit'] }))
+
+    await waitFor(() => { expect(b.calls.declared).toHaveLength(1) })
+    expect(b.calls.declared[0]).toEqual({
+      workspaceId: 'solo',
+      draft: {
+        serverId: 'aosp-builder',
+        destination: 'ci@build.internal',
+        projectDirectory: '/srv/builds',
+        recipes: [{ id: 'ninja', command: 'ninja -C {cwd}' }],
+      },
+    })
+    // The row the step shows is the host's answer, read back after the write, and the forward
+    // control now says what it does rather than offering to skip a server that exists. Three reads:
+    // the step opening, the declaration landing, and the automatic probe that follows it — "added,
+    // does it connect?" is answered without a second gesture.
+    await waitFor(() => { expect(screen.getByText('aosp-builder')).toBeTruthy() })
+    expect(screen.getByRole('button', { name: zh['wizard.next'] })).toBeTruthy()
+    expect(b.calls.probes).toEqual([{ workspaceId: 'solo', serverId: 'aosp-builder' }])
+    expect(b.calls.servers).toEqual(['solo', 'solo', 'solo'])
+  })
+
+  it('shows what the last probe concluded, and tests on demand', async () => {
+    const b = bench({
+      progress: { solo: beforeIt },
+      servers: [{
+        serverId: 'build-1', title: 'Build farm', destination: 'ci@farm', projectDirectory: '/srv/build',
+        transport: 'ssh', recipeIds: ['make'], declaredAt: '2026-01-01T00:00:00.000Z',
+        lastProbeAt: '2026-02-03T04:05:06.000Z', lastPlatform: 'Linux',
+      }],
+    })
+    render(<OnboardingWizard {...b.props} />)
+
+    // The state is the host's stored outcome, so a reloaded wizard reports the same answer the
+    // probe did: a green dot, with the platform it observed behind it rather than in the row.
+    await waitFor(() => { expect(screen.getByText('Build farm')).toBeTruthy() })
+    expect(screen.getByText('Build farm').closest('li')?.querySelector('[data-state="done"]')).toBeTruthy()
+    expect(screen.queryByText(zh['server.neverProbed'])).toBeNull()
+    expect(screen.getByText(zh['server.reachableOn'].replace('{platform}', 'Linux'))).toBeTruthy()
+
+    fireEvent.click(screen.getByRole('button', { name: zh['server.probe'] }))
+    await waitFor(() => { expect(b.calls.probes).toEqual([{ workspaceId: 'solo', serverId: 'build-1' }]) })
+  })
+
+  it('renders a failed probe as the row\'s status, carrying the host\'s reason', async () => {
+    const b = bench({
+      progress: { solo: beforeIt },
+      servers: [{
+        serverId: 'build-1', title: 'Build farm', destination: 'ci@farm', projectDirectory: '/srv/build',
+        transport: 'ssh', recipeIds: ['make'], declaredAt: '2026-01-01T00:00:00.000Z',
+        lastProbeAt: '2026-02-03T04:05:06.000Z', lastProbeError: "no directory '/srv/build' on ci@farm",
+      }],
+    })
+    render(<OnboardingWizard {...b.props} />)
+
+    // A failed test is the one state that keeps its words on screen — which directory is missing is
+    // what the operator acts on — and it draws them beside a red dot.
+    await waitFor(() => {
+      expect(screen.getByText(
+        zh['server.unreachable'].replace('{error}', "no directory '/srv/build' on ci@farm"),
+      )).toBeTruthy()
+    })
+    expect(screen.getByText('Build farm').closest('li')?.querySelector('[data-state="error"]')).toBeTruthy()
+  })
+
+  it('reports a probe the host refused without losing the list', async () => {
+    const b = bench({
+      progress: { solo: beforeIt },
+      servers: [{
+        serverId: 'build-1', title: 'Build farm', destination: 'ci@farm', projectDirectory: '/srv/build',
+        transport: 'ssh', recipeIds: ['make'], declaredAt: '2026-01-01T00:00:00.000Z',
+      }],
+      probeThrows: new Error('the build-server namespace is not mounted'),
+    })
+    render(<OnboardingWizard {...b.props} />)
+    await waitFor(() => { expect(screen.getByText('Build farm')).toBeTruthy() })
+
+    fireEvent.click(screen.getByRole('button', { name: zh['server.probe'] }))
+
+    await waitFor(() => { expect(screen.getByText('the build-server namespace is not mounted')).toBeTruthy() })
+    // A refused call is not a verdict about the host: the row keeps saying it was never tested.
+    expect(screen.getByText(zh['server.neverProbed'])).toBeTruthy()
+  })
+
+  it('sends the optional fields only when the operator filled them', async () => {
+    const b = bench({ progress: { solo: beforeIt } })
+    render(<OnboardingWizard {...b.props} />)
+    await openForm()
+
+    fill(zh['wizard.step.server.field.id'], 'farm')
+    fill(zh['wizard.step.server.field.username'], 'ci')
+    fill(zh['wizard.step.server.field.host'], 'farm')
+    await chooseDirectory(b, '/srv/farm')
+    fill(zh['wizard.step.server.field.timeout'], '60000')
+    fill(zh['wizard.step.server.field.ssh'], '/usr/bin/ssh')
+    fillRecipe('make', 'make -C {cwd}')
+    fireEvent.click(screen.getByRole('button', { name: zh['wizard.step.server.submit'] }))
+
+    await waitFor(() => { expect(b.calls.declared).toHaveLength(1) })
+    // A blank label stays absent rather than travelling as an empty string: the host defaults it
+    // to the id, and an empty `sshExecutable` would be a path no run could execute.
+    expect(b.calls.declared[0]?.draft).toEqual({
+      serverId: 'farm',
+      destination: 'ci@farm',
+      projectDirectory: '/srv/farm',
+      recipes: [{ id: 'make', command: 'make -C {cwd}' }],
+      timeoutMs: 60_000,
+      sshExecutable: '/usr/bin/ssh',
+    })
+  })
+
+  it('joins the user name and the host into the destination the host receives', async () => {
+    const b = bench({ progress: { solo: beforeIt } })
+    render(<OnboardingWizard {...b.props} />)
+    await openForm()
+
+    fill(zh['wizard.step.server.field.id'], 'farm')
+    // Half a destination is no destination: with no host the connect control stays refused, so the
+    // operator cannot browse — let alone declare — against something nobody could resolve.
+    fill(zh['wizard.step.server.field.username'], 'ci')
+    const connect = (): HTMLButtonElement => screen.getByRole('button', { name: zh['wizard.step.server.connect'] }) as HTMLButtonElement
+    expect(connect().disabled).toBe(true)
+
+    fill(zh['wizard.step.server.field.host'], '10.10.30.6')
+    expect(connect().disabled).toBe(false)
+    await chooseDirectory(b, '/srv/farm')
+    fillRecipe('make', 'make')
+    fireEvent.click(screen.getByRole('button', { name: zh['wizard.step.server.submit'] }))
+
+    // The operator typed two facts, the listing reached the joined destination, and the record
+    // carries the one string OpenSSH takes.
+    await waitFor(() => { expect(b.calls.declared).toHaveLength(1) })
+    expect(b.calls.browses[0]?.destination).toBe('ci@10.10.30.6')
+    expect(b.calls.declared[0]?.draft.destination).toBe('ci@10.10.30.6')
+  })
+
+  it("sends each recipe's output directory and the revision flag only when the operator set them", async () => {
+    const b = bench({ progress: { solo: beforeIt } })
+    render(<OnboardingWizard {...b.props} />)
+    await openForm()
+
+    fill(zh['wizard.step.server.field.id'], 'aosp')
+    fill(zh['wizard.step.server.field.username'], 'ci')
+    fill(zh['wizard.step.server.field.host'], 'aosp')
+    await chooseDirectory(b, '/srv/aosp')
+    fillRecipe('ninja', 'ninja -C {cwd} OUT={out}')
+    // The output directory is per recipe because a whole build and a module build of one tree
+    // write to different places; this row names its own.
+    fireEvent.change(
+      screen.getAllByPlaceholderText(zh['wizard.step.server.recipe.output'])[0] as HTMLInputElement,
+      { target: { value: '/srv/aosp-out' } },
+    )
+    fireEvent.click(screen.getByLabelText(zh['wizard.step.server.field.captureRevision']))
+    fireEvent.click(screen.getByRole('button', { name: zh['wizard.step.server.submit'] }))
+
+    await waitFor(() => { expect(b.calls.declared).toHaveLength(1) })
+    expect(b.calls.declared[0]?.draft).toEqual({
+      serverId: 'aosp',
+      destination: 'ci@aosp',
+      projectDirectory: '/srv/aosp',
+      captureRevision: true,
+      recipes: [{ id: 'ninja', command: 'ninja -C {cwd} OUT={out}', outputDirectory: '/srv/aosp-out' }],
+    })
+  })
+
+  it('leaves a recipe without an output directory to the host default', async () => {
+    const b = bench({ progress: { solo: beforeIt } })
+    render(<OnboardingWizard {...b.props} />)
+    await openForm()
+
+    fill(zh['wizard.step.server.field.id'], 'aosp')
+    fill(zh['wizard.step.server.field.username'], 'ci')
+    fill(zh['wizard.step.server.field.host'], 'aosp')
+    await chooseDirectory(b, '/srv/aosp')
+    fillRecipe('ninja', 'ninja -C {cwd}')
+    fireEvent.click(screen.getByRole('button', { name: zh['wizard.step.server.submit'] }))
+
+    await waitFor(() => { expect(b.calls.declared).toHaveLength(1) })
+    // Absent rather than empty: the host resolves `<project directory>/out` per run, and an empty
+    // string would travel as a directory named nothing.
+    expect(b.calls.declared[0]?.draft.recipes).toEqual([{ id: 'ninja', command: 'ninja -C {cwd}' }])
+  })
+
+  it('walks what the connect call already answered for without connecting again', async () => {
+    // A connection per click is what the operator waits on, so a level the connect listing already
+    // covered has to arrive with no further call; a level below what it covered costs exactly one.
+    const b = bench({ progress: { solo: beforeIt }, path: '/srv/aosp/bionic' })
+    render(<OnboardingWizard {...b.props} />)
+    await openForm()
+    fill(zh['wizard.step.server.field.username'], 'ci')
+    fill(zh['wizard.step.server.field.host'], 'farm')
+
+    fireEvent.click(screen.getByRole('button', { name: zh['wizard.step.server.connect'] }))
+
+    // The first listing names no directory, which is how a picker asks for the login directory, and
+    // its answer covers the two levels below it.
+    await waitFor(() => { expect(b.calls.browses).toEqual([{ destination: 'ci@farm' }]) })
+    const at = (path: string): string => zh['wizard.step.server.browse.current'].replace('{path}', path)
+    await waitFor(() => { expect(screen.getByText(at('/'))).toBeTruthy() })
+
+    fireEvent.click(screen.getByRole('button', { name: 'srv' }))
+    // Covered: the click is answered from what the picker holds.
+    expect(screen.getByText(at('/srv'))).toBeTruthy()
+    expect(b.calls.browses).toHaveLength(1)
+
+    fireEvent.click(screen.getByRole('button', { name: 'aosp' }))
+    // At the ceiling: the walk reported that this directory exists without listing its children, so
+    // entering it is the one call the click costs.
+    await waitFor(() => { expect(screen.getByText(at('/srv/aosp'))).toBeTruthy() })
+    expect(b.calls.browses).toEqual([
+      { destination: 'ci@farm' },
+      { destination: 'ci@farm', directory: '/srv/aosp' },
+    ])
+
+    fireEvent.click(screen.getByRole('button', { name: zh['wizard.step.server.browse.up'] }))
+    // Going back up is covered too: the level above was in the first answer.
+    expect(screen.getByText(at('/srv'))).toBeTruthy()
+    expect(b.calls.browses).toHaveLength(2)
+  })
+
+  it('carries the client the operator pinned into every listing', async () => {
+    const b = bench({ progress: { solo: beforeIt } })
+    render(<OnboardingWizard {...b.props} />)
+    await openForm()
+    fill(zh['wizard.step.server.field.username'], 'ci')
+    fill(zh['wizard.step.server.field.host'], 'farm')
+    fill(zh['wizard.step.server.field.ssh'], '/opt/ssh')
+    fireEvent.click(screen.getByRole('button', { name: zh['wizard.step.server.connect'] }))
+
+    // The client that will run the build is the one that must reach the machine now, or the
+    // operator would be choosing from a listing taken through some other binary.
+    await waitFor(() => {
+      expect(b.calls.browses).toEqual([{ destination: 'ci@farm', sshExecutable: '/opt/ssh' }])
+    })
+  })
+
+  it('reports a listing the host refused, leaving the path empty', async () => {
+    const b = bench({
+      progress: { solo: beforeIt },
+      browseThrows: new Error('this deployment mounts no build-server service'),
+    })
+    render(<OnboardingWizard {...b.props} />)
+    await openForm()
+    fill(zh['wizard.step.server.field.username'], 'ci')
+    fill(zh['wizard.step.server.field.host'], 'farm')
+    fireEvent.click(screen.getByRole('button', { name: zh['wizard.step.server.connect'] }))
+
+    await waitFor(() => { expect(screen.getByText('this deployment mounts no build-server service')).toBeTruthy() })
+    expect(screen.getByText(zh['wizard.step.server.directory.none'])).toBeTruthy()
+    // Nothing was chosen, so the declaration cannot be submitted.
+    expect((screen.getByRole('button', { name: zh['wizard.step.server.submit'] }) as HTMLButtonElement).disabled).toBe(true)
+  })
+
+  it('shows a listing that failed without hiding what the picker knows', async () => {
+    const b = bench({ progress: { solo: beforeIt } })
+    b.answers.path = undefined
+    render(<OnboardingWizard {...b.props} />)
+    await openForm()
+    fill(zh['wizard.step.server.field.username'], 'ci')
+    fill(zh['wizard.step.server.field.host'], 'farm')
+    // A host that answers "there is no such directory" is a listing with an error, not a refusal:
+    // the picker stays usable and says where it was.
+    b.answers.browse = () => ({
+      directory: '/nope', entries: [], depth: 2, truncated: false, error: "no directory '/nope' on ci@farm",
+    })
+    fireEvent.click(screen.getByRole('button', { name: zh['wizard.step.server.connect'] }))
+
+    await waitFor(() => { expect(screen.getByText("no directory '/nope' on ci@farm")).toBeTruthy() })
+    expect(screen.getByText(zh['wizard.step.server.browse.current'].replace('{path}', '/nope'))).toBeTruthy()
+    expect((screen.getByRole('button', { name: zh['wizard.step.server.browse.choose'] }) as HTMLButtonElement).disabled).toBe(true)
+  })
+
+  it('says so when a directory holds no subdirectories, and when the listing was cut', async () => {
+    const b = bench({ progress: { solo: beforeIt } })
+    render(<OnboardingWizard {...b.props} />)
+    await openForm()
+    fill(zh['wizard.step.server.field.username'], 'ci')
+    fill(zh['wizard.step.server.field.host'], 'farm')
+    b.answers.browse = () => ({ directory: '/srv', entries: [], depth: 2, truncated: false })
+    fireEvent.click(screen.getByRole('button', { name: zh['wizard.step.server.connect'] }))
+    await waitFor(() => { expect(screen.getByText(zh['wizard.step.server.browse.empty'])).toBeTruthy() })
+
+    b.answers.browse = () => ({ directory: '/srv', entries: ['a', 'b'], depth: 2, truncated: true })
+    // Once connected the same control reads as a refresh, because re-reading is what it now does.
+    fireEvent.click(screen.getByRole('button', { name: zh['wizard.step.server.browse.refresh'] }))
+    await waitFor(() => {
+      expect(screen.getByText(zh['wizard.step.server.browse.truncated'].replace('{count}', '2'))).toBeTruthy()
+    })
+  })
+
+  it('closes the listing once a directory is chosen, and opens it again on request', async () => {
+    const b = bench({ progress: { solo: beforeIt }, path: '/srv/aosp' })
+    render(<OnboardingWizard {...b.props} />)
+    await openForm()
+    fill(zh['wizard.step.server.field.username'], 'ci')
+    fill(zh['wizard.step.server.field.host'], 'farm')
+
+    fireEvent.click(screen.getByRole('button', { name: zh['wizard.step.server.connect'] }))
+    const at = (path: string): string => zh['wizard.step.server.browse.current'].replace('{path}', path)
+    await waitFor(() => { expect(screen.getByText(at('/'))).toBeTruthy() })
+
+    fireEvent.click(screen.getByRole('button', { name: 'srv' }))
+    fireEvent.click(screen.getByRole('button', { name: zh['wizard.step.server.browse.choose'] }))
+
+    // The listing was opened to answer one question, and the chosen path above it is the answer:
+    // leaving the panel standing would be a decision the operator has already made, still on screen.
+    expect(screen.queryByText(at('/srv'))).toBeNull()
+    expect(screen.getByText('/srv')).toBeTruthy()
+    expect(screen.queryByRole('button', { name: zh['wizard.step.server.browse.choose'] })).toBeNull()
+
+    // The control now offers the other thing it can do, and takes one call to do it.
+    const before = b.calls.browses.length
+    fireEvent.click(screen.getByRole('button', { name: zh['wizard.step.server.browse.change'] }))
+    await waitFor(() => { expect(screen.getByText(at('/srv'))).toBeTruthy() })
+    expect(b.calls.browses.length).toBe(before + 1)
+  })
+
+  it('keeps the form open, with its fields, over a refusal', async () => {
+    // The host's message names the field at fault, so the operator corrects that one instead of
+    // retyping the declaration.
+    const b = bench({
+      progress: { solo: beforeIt },
+      declareThrows: new Error('projectDirectory must be an absolute server path'),
+    })
+    render(<OnboardingWizard {...b.props} />)
+    await openForm()
+
+    fill(zh['wizard.step.server.field.id'], 'farm')
+    fill(zh['wizard.step.server.field.username'], 'ci')
+    fill(zh['wizard.step.server.field.host'], 'farm')
+    await chooseDirectory(b, '/srv/farm')
+    fillRecipe('make', 'make')
+    fireEvent.click(screen.getByRole('button', { name: zh['wizard.step.server.submit'] }))
+
+    await waitFor(() => { expect(screen.getByText('projectDirectory must be an absolute server path')).toBeTruthy() })
+    expect((screen.getByLabelText(zh['wizard.step.server.field.id']) as HTMLInputElement).value).toBe('farm')
+    // Nothing was declared, so the step's list was not read again.
+    expect(b.calls.servers).toEqual(['solo'])
+  })
+
+  it('declares nothing until every required field is filled', async () => {
+    const b = bench({ progress: { solo: beforeIt } })
+    render(<OnboardingWizard {...b.props} />)
+    await openForm()
+
+    const submit = (): HTMLButtonElement =>
+      screen.getByRole('button', { name: zh['wizard.step.server.submit'] }) as HTMLButtonElement
+    expect(submit().disabled).toBe(true)
+    fill(zh['wizard.step.server.field.id'], 'farm')
+    fill(zh['wizard.step.server.field.username'], 'ci')
+    fill(zh['wizard.step.server.field.host'], 'farm')
+    expect(submit().disabled).toBe(true)
+    await chooseDirectory(b, '/srv/farm')
+    // The one recipe row is still blank, and the host refuses a declaration without a complete
+    // one — so the control stays refusing rather than letting the operator learn it from a
+    // rejected write.
+    expect(submit().disabled).toBe(true)
+    fillRecipe('make', 'make')
+    expect(submit().disabled).toBe(false)
+    expect(b.calls.declared).toEqual([])
+  })
+
+  it('refuses a timeout the host would reject', async () => {
+    const b = bench({ progress: { solo: beforeIt } })
+    render(<OnboardingWizard {...b.props} />)
+    await openForm()
+    fill(zh['wizard.step.server.field.id'], 'farm')
+    fill(zh['wizard.step.server.field.username'], 'ci')
+    fill(zh['wizard.step.server.field.host'], 'farm')
+    await chooseDirectory(b, '/srv/farm')
+    fillRecipe('make', 'make')
+
+    const submit = (): HTMLButtonElement =>
+      screen.getByRole('button', { name: zh['wizard.step.server.submit'] }) as HTMLButtonElement
+    expect(submit().disabled).toBe(false)
+    // A blank timeout means "the host's default"; anything else has to parse, because the host
+    // refuses a non-positive or unparsable one and the operator would only hear it as a refusal.
+    fill(zh['wizard.step.server.field.timeout'], '0')
+    expect(submit().disabled).toBe(true)
+    fill(zh['wizard.step.server.field.timeout'], '60000')
+    expect(submit().disabled).toBe(false)
+  })
+
+  it('adds and drops recipe rows', async () => {
+    render(<OnboardingWizard {...bench({ progress: { solo: beforeIt } }).props} />)
+    await openForm()
+    expect(screen.getAllByPlaceholderText(zh['wizard.step.server.recipe.id'])).toHaveLength(1)
+
+    const remove = (): HTMLButtonElement[] =>
+      screen.getAllByRole('button', { name: zh['wizard.step.server.recipe.remove'] }) as HTMLButtonElement[]
+    // A form with one recipe row cannot drop it: the host refuses a declaration that names no
+    // recipe, so the control would only lead to a refusal.
+    expect(remove().map(button => button.disabled)).toEqual([true])
+    fireEvent.click(screen.getByRole('button', { name: zh['wizard.step.server.recipe.add'] }))
+    expect(screen.getAllByPlaceholderText(zh['wizard.step.server.recipe.id'])).toHaveLength(2)
+    expect(remove().map(button => button.disabled)).toEqual([false, false])
+    fireEvent.click(remove()[1] as HTMLButtonElement)
+    expect(screen.getAllByPlaceholderText(zh['wizard.step.server.recipe.id'])).toHaveLength(1)
+  })
+
+  it('cancels the form without declaring anything', async () => {
+    const b = bench({ progress: { solo: beforeIt } })
+    render(<OnboardingWizard {...b.props} />)
+    await openForm()
+    fill(zh['wizard.step.server.field.id'], 'farm')
+    fireEvent.click(screen.getByRole('button', { name: zh['wizard.step.server.cancel'] }))
+    expect(screen.getByRole('button', { name: zh['wizard.step.server.add'] })).toBeTruthy()
+    expect(b.calls.declared).toEqual([])
   })
 })
 
@@ -1460,6 +2103,22 @@ describe('the summary step', () => {
     expect(screen.getByText(zh['wizard.step.ready.noServer'])).toBeTruthy()
   })
 
+  it('names the servers the host holds, not the ones the walk typed', async () => {
+    // The summary is the confirmation, so it reads the declarations back: reciting the form's
+    // own draft would confirm a server the host may not hold.
+    const b = bench({
+      progress: { solo: upTo('ready', { projectTitle: 'ivi', repositories: ['/aosp'], specificationPath: 'docs/spec.md' }) },
+      servers: [{
+        serverId: 'aosp-builder', title: 'Build farm', destination: 'ci@build', projectDirectory: '/srv',
+        transport: 'ssh', recipeIds: ['ninja'], declaredAt: '2026-01-01T00:00:00.000Z',
+      }],
+    })
+    render(<OnboardingWizard {...b.props} />)
+    await waitFor(() => { expect(screen.getByText('Build farm')).toBeTruthy() })
+    expect(screen.getByText(zh['wizard.step.ready.summaryServers'].replace('{count}', '1'))).toBeTruthy()
+    expect(screen.queryByText(zh['wizard.step.ready.noServer'])).toBeNull()
+  })
+
   it('tolerates answers that were never supplied', () => {
     // The summary is the one step that renders other steps' answers, so a missing one has to
     // read as blank rather than throw.
@@ -1469,6 +2128,67 @@ describe('the summary step', () => {
     const view = render(<OnboardingWizard {...b.props} />)
     expect(shownStep(view.container)).toBe('ready')
     expect(view.container.textContent).toContain(zh['wizard.step.ready.noServer'])
+  })
+})
+
+describe('the blank home\'s build-server strip', () => {
+  /** A declaration whose last probe succeeded. */
+  const reachable: YxspecRemoteServerView = {
+    serverId: 'build-1', title: 'Build farm', destination: 'ci@farm', projectDirectory: '/srv/aosp',
+    transport: 'ssh', recipeIds: ['ninja-full'], declaredAt: '2026-01-01T00:00:00.000Z',
+    lastProbeAt: '2026-02-03T04:05:06.000Z', lastPlatform: 'Linux',
+  }
+
+  /** An onboarded project: the gate is open, so the strip is what the home adds. */
+  function onboarded(servers: readonly YxspecRemoteServerView[]) {
+    return bench({ progress: { solo: onboardedProgress() }, servers })
+  }
+
+  it('reports the declared servers under the composer', async () => {
+    render(<OnboardingWizard {...onboarded([reachable]).props} />)
+
+    await waitFor(() => { expect(screen.getByText(/Build farm/)).toBeTruthy() })
+    // The state reads as a dot on the line rather than as a sentence in it.
+    expect(screen.getByText(/Build farm/).parentElement?.querySelector('[data-state="done"]')).toBeTruthy()
+    expect(screen.getByText(new RegExp(zh['section.servers']))).toBeTruthy()
+    expect(screen.getByText(zh['server.reachableOn'].replace('{platform}', 'Linux'))).toBeTruthy()
+  })
+
+  it('renders nothing for a project that declared no server', async () => {
+    const view = render(<OnboardingWizard {...onboarded([]).props} />)
+
+    // A deployment that builds locally must not grow a heading it cannot fill.
+    await waitFor(() => { expect(view.getByTestId('body')).toBeTruthy() })
+    expect(screen.queryByText(new RegExp(zh['section.servers']))).toBeNull()
+    expect(screen.queryByRole('button', { name: zh['server.probe'] })).toBeNull()
+  })
+
+  it('tests a server from the strip and re-reads its state', async () => {
+    // Never probed: the outcome keys are absent rather than present-and-empty, which is the shape
+    // the host projects for a declaration nothing has tested.
+    const { lastProbeAt: _probed, lastPlatform: _platform, ...untested } = reachable
+    const b = onboarded([untested])
+    render(<OnboardingWizard {...b.props} />)
+
+    await waitFor(() => { expect(screen.getByText(zh['server.neverProbed'])).toBeTruthy() })
+    const line = screen.getByText(/Build farm/).parentElement
+    expect(line?.querySelector('[data-state="idle"]')).toBeTruthy()
+    const reads = b.calls.servers.length
+    fireEvent.click(screen.getByRole('button', { name: zh['server.probe'] }))
+
+    // The outcome lands on the declaration, so the strip reads the list again rather than holding it.
+    await waitFor(() => { expect(b.calls.probes).toEqual([{ workspaceId: 'solo', serverId: 'build-1' }]) })
+    await waitFor(() => { expect(line?.querySelector('[data-state="done"]')).toBeTruthy() })
+    expect(screen.getByText(zh['server.reachableOn'].replace('{platform}', 'Linux'))).toBeTruthy()
+    expect(b.calls.servers.length).toBeGreaterThan(reads)
+  })
+
+  it('adds nothing to an embedded Conversation', async () => {
+    // The strip belongs to the blank home; an embedded frame keeps its own body untouched.
+    const view = render(<OnboardingWizard {...bench({ hero: false, progress: {}, servers: [reachable] }).props} />)
+
+    expect(view.getByTestId('body')).toBeTruthy()
+    expect(screen.queryByText(zh['server.reachableOn'].replace('{platform}', 'Linux'))).toBeNull()
   })
 })
 

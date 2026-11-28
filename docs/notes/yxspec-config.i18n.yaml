@@ -1,0 +1,43 @@
+# Bilingual-pair consistency record for yxspec-config.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write docs/notes/yxspec-config.md
+/the-yxspec-json-project-declaration:
+  en: 5187ab30086b9f39
+  zh: 742b199f99a359bd
+/the-yxspec-json-project-declaration/the-file-is-the-switch-not-a-flag:
+  en: 2ed0847ae718b4f3
+  zh: 754b730e8caaaafd
+/the-yxspec-json-project-declaration/the-file-is-the-switch-not-a-flag/where-it-lives:
+  en: 5c5a1c81e30a03ba
+  zh: 7ab88ed92be52b94
+/the-yxspec-json-project-declaration/two-consumer-groups-one-file:
+  en: 533689a4f488f65f
+  zh: d1c327a539adbae4
+/the-yxspec-json-project-declaration/two-consumer-groups-one-file/what-the-harness-reads:
+  en: 9f040f8274e55cf6
+  zh: 43f7fd960c6822fe
+/the-yxspec-json-project-declaration/key-inventory:
+  en: aec55ec564e788da
+  zh: 8127be0b4431b203
+/the-yxspec-json-project-declaration/key-inventory/live-at-the-harness-boundary:
+  en: 6f19bc693f34412e
+  zh: c6e9766f281dbeb4
+/the-yxspec-json-project-declaration/key-inventory/flow-wide-configuration:
+  en: 0c9f5bec7d575630
+  zh: e2ac3ea473bead66
+/the-yxspec-json-project-declaration/key-inventory/keys-with-no-observed-consumer:
+  en: 70f531a0f265ffcc
+  zh: a42d8fb8c19c61af
+/the-yxspec-json-project-declaration/key-inventory/the-sqt-section:
+  en: 4239ff7ea3b12ba4
+  zh: 9f7fe1692c71d117
+/the-yxspec-json-project-declaration/anchor-template-the-annotation-is-stale:
+  en: 1801710abec305c4
+  zh: 19aafc6a6ed2ffab
+/the-yxspec-json-project-declaration/anchor-template-the-annotation-is-stale/product-type-moved-out:
+  en: b140d0d2b957c40c
+  zh: 369bedf9d2435cbb
+/the-yxspec-json-project-declaration/verification-status:
+  en: 9622d1c87507fd3e
+  zh: 7c277c1d1c539684

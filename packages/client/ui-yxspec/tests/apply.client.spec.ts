@@ -20,7 +20,11 @@ import { TestRemote } from '@deepseek-ai/dsh-client-test-runtime'
 import { RemoteError } from '@deepseek-ai/dsh-client-test-runtime'
 import { apply as applyLocale, inject as localeInject } from '@deepseek-ai/dsh-client-locale/client'
 import type { WorkspaceCreateRequest, WorkspaceId, WorkspaceView } from '@deepseek-ai/dsh-api-workspace-controller/types'
-import type { YxspecDocumentView, YxspecRemoteServerView } from '@deepseek-ai/dsh-yxspec-api/types'
+import type {
+  YxspecDocumentView,
+  YxspecRemoteServerDraft,
+  YxspecRemoteServerView,
+} from '@deepseek-ai/dsh-yxspec-api/types'
 import { apply, inject } from '../src/client/index.ts'
 import type { OnboardingWizardInjected } from '../src/client/OnboardingWizard.tsx'
 import type { YxspecSectionInjected } from '../src/client/slots.ts'
@@ -40,7 +44,7 @@ const DOCUMENT: YxspecDocumentView = { path: 'specs/spec.md', title: 'spec', siz
 
 /** One declared build server, as the Remote would project it. */
 const SERVER: YxspecRemoteServerView = {
-  serverId: 'build-1', title: 'Build farm', destination: 'ci@farm', baseDirectory: '/srv/build',
+  serverId: 'build-1', title: 'Build farm', destination: 'ci@farm', projectDirectory: '/srv/build',
   transport: 'ssh', recipeIds: ['make'], declaredAt: '2026-01-01T00:00:00.000Z',
 }
 
@@ -178,6 +182,10 @@ async function bench() {
   }
   const yxspecRemote = {
     servers: (workspaceId: string) => Promise.resolve({ ok: true, value: [{ ...SERVER, serverId: workspaceId }] }),
+    declareServer: (_workspaceId: string, draft: YxspecRemoteServerDraft) =>
+      Promise.resolve({ ok: true, value: { ...SERVER, serverId: draft.serverId } }),
+    probeServer: (_workspaceId: string, serverId: string) =>
+      Promise.resolve({ ok: true, value: { serverId, reachable: true, platform: 'Linux', outputPresent: true } }),
   }
   const pickerAnswers: { ok: boolean; value?: string; message?: string }[] = []
   const directoryPicker = {
@@ -367,6 +375,58 @@ describe('the wizard data face', () => {
   it('reads the servers declared for the project it was handed', async () => {
     const b = await bench()
     await expect(b.wizard.loadServers('solo')).resolves.toEqual([{ ...SERVER, serverId: 'solo' }])
+  })
+
+  it('probes a declared server through the namespace', async () => {
+    const b = await bench()
+    await expect(b.wizard.probeServer('solo', 'build-1')).resolves.toEqual({
+      serverId: 'build-1', reachable: true, platform: 'Linux', outputPresent: true,
+    })
+  })
+
+  it.each([
+    ['the namespace is absent', undefined, 'the build-server namespace is not mounted'],
+    [
+      'the call is refused',
+      { probeServer: () => Promise.resolve({ ok: false, error: new RemoteError('gateway/internal', 'no such server', {}) }) },
+      'no such server',
+    ],
+  ])('reports a probe that could not be made when %s', async (_name, namespace, message) => {
+    const b = await bench()
+    b.setYxspecRemote(namespace)
+    // An unreachable *host* answers rather than throws; this is the other case — the call itself
+    // never happened, and the operator has to know the difference.
+    await expect(b.wizard.probeServer('solo', 'build-1')).rejects.toThrow(message)
+  })
+
+  it('declares a server through the namespace and answers with what the host stored', async () => {
+    const b = await bench()
+    await expect(b.wizard.declareServer('solo', {
+      serverId: 'aosp-builder',
+      destination: 'ci@build',
+      projectDirectory: '/srv/builds',
+      recipes: [{ id: 'ninja', command: 'ninja -C {cwd}' }],
+    })).resolves.toEqual({ ...SERVER, serverId: 'aosp-builder' })
+  })
+
+  it.each([
+    ['the namespace is absent', undefined, 'the build-server namespace is not mounted'],
+    [
+      'the call is refused',
+      { declareServer: () => Promise.resolve({ ok: false, error: new RemoteError('gateway/internal', 'the host refused it', {}) }) },
+      'the host refused it',
+    ],
+  ])('reports a declaration that did not land when %s', async (_name, namespace, message) => {
+    const b = await bench()
+    b.setYxspecRemote(namespace)
+    // A declaration that landed nowhere must not look like one that landed: the operator would
+    // otherwise walk on believing the project builds remotely.
+    await expect(b.wizard.declareServer('solo', {
+      serverId: 'aosp-builder',
+      destination: 'ci@build',
+      projectDirectory: '/srv/builds',
+      recipes: [{ id: 'ninja', command: 'ninja -C {cwd}' }],
+    })).rejects.toThrow(message)
   })
 
   it('creates a project over a name alone, then records the step against the id it answered', async () => {

@@ -307,6 +307,19 @@
   outline: none;
 }
 
+/* One recipe: its id, its command, and the control that drops the row. The two fields share
+   the width that is left after the control, so a long command has room to be read back. */
+.recipe {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.recipe .text {
+  flex: 1 1 0;
+  min-width: 0;
+}
+
 /* Confirmation summary: plain rows, no interactions. */
 .summary {
   display: flex;
@@ -318,4 +331,91 @@
   font-size: 13px;
   line-height: 20px;
   list-style: none;
+}
+
+/* The build-server strip under the blank home's composer. Quiet by design: it reports a fact the
+   operator may act on, not a task — the composer above it stays the page's subject. */
+.buildServers {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  align-items: center;
+  padding-top: 10px;
+}
+
+.buildServer {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--dsw-alias-label-tertiary);
+  font-size: 12px;
+  line-height: 18px;
+}
+
+.buildServerName {
+  color: var(--dsw-alias-label-secondary);
+}
+
+.buildServerState {
+  overflow-wrap: anywhere;
+}
+
+/* The compile directory: what was chosen, the control that connects, and the listing under it. */
+.browseRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.browsePath {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  color: var(--dsw-alias-label-primary);
+  font-size: 13px;
+  line-height: 20px;
+}
+
+.browse {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px;
+  border: 0.5px solid var(--dsw-alias-border-l3);
+  border-radius: var(--dsw-radius-md);
+  background: var(--dsw-alias-bg-layer-2, var(--dsw-alias-bg-layer-1));
+}
+
+.browseCurrent {
+  overflow-wrap: anywhere;
+  color: var(--dsw-alias-label-secondary);
+  font-size: 12px;
+  line-height: 18px;
+}
+
+/* A scrolling column rather than a wrapped block: entries are a list to scan, and a grown panel
+   would push the rest of the form off the card. */
+.browseList {
+  display: flex;
+  flex-direction: column;
+  max-height: 180px;
+  overflow-y: auto;
+}
+
+.browseEntry {
+  padding: 4px 6px;
+  border: none;
+  border-radius: var(--dsw-radius-sm, 4px);
+  background: none;
+  color: var(--dsw-alias-label-primary);
+  cursor: pointer;
+  font: inherit;
+  font-size: 13px;
+  line-height: 20px;
+  overflow-wrap: anywhere;
+  text-align: left;
+}
+
+.browseEntry:hover {
+  background: var(--dsw-alias-bg-layer-3, var(--dsw-alias-bg-layer-2));
 }

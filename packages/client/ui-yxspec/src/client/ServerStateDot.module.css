@@ -1,0 +1,19 @@
+/* The dot leads the words a failure shows beside it, and stands alone for the states that have
+   none. */
+.state {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+}
+
+/* The state of a server whose last test succeeded, as text only a screen reader reads: the dot is
+   `aria-hidden`, so this is what announces it. */
+.visuallyHidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}

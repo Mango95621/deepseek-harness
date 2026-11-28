@@ -35,6 +35,7 @@ import type {} from '@deepseek-ai/dsh-working-directory'
 import type {} from '@deepseek-ai/dsh-workspace'
 import { defineTool } from '@deepseek-ai/dsh-tools'
 import { JSON_TOOL_OUTPUT } from '@deepseek-ai/dsh-yxspec/tool-output'
+import type { YxspecRemoteRecipe } from './types.ts'
 
 /** Plugin name registered with the Loader. */
 export const name = 'yxspec-remote-tools'
@@ -84,7 +85,7 @@ function registerRemoteTools(ctx: Context): void {
           id: server.serverId,
           title: server.title,
           destination: server.destination,
-          baseDirectory: server.baseDirectory,
+          projectDirectory: server.projectDirectory,
           recipes: Object.keys(server.recipes),
           lastProbeAt: server.lastProbeAt ?? null,
           lastPlatform: server.lastPlatform ?? null,
@@ -98,17 +99,19 @@ function registerRemoteTools(ctx: Context): void {
     description:
       'Declare or replace a build server for the active project. The destination is an OpenSSH destination '
       + '(a `Host` alias from the user\'s own SSH config, or `user@host`); credentials are never passed here and '
-      + 'never stored. A recipe is a command template run on the server with `{cwd}` replaced by the uploaded '
-      + 'tree\'s directory — only declared recipes can ever run.',
+      + 'never stored. `projectDirectory` is a directory that already exists on that machine — nothing is '
+      + 'uploaded, and the harness never creates, replaces, or deletes it. A recipe is a command template run '
+      + 'inside that directory, with `{cwd}` replaced by it and `{out}` by the output directory; only declared '
+      + 'recipes can ever run.',
     parameters: {
       serverId: { type: 'string', required: true, description: 'Short id, unique within the project, e.g. `aosp-builder`.' },
       destination: {
         type: 'string', required: true,
         description: 'OpenSSH destination: a `~/.ssh/config` Host alias or `user@host`.',
       },
-      baseDirectory: {
+      projectDirectory: {
         type: 'string', required: true,
-        description: 'Absolute server directory under which this project gets a scratch build tree.',
+        description: 'Absolute server directory holding the checkout to build; it must already exist.',
       },
       recipes: {
         type: 'array', required: true,
@@ -119,10 +122,18 @@ function registerRemoteTools(ctx: Context): void {
             id: { type: 'string', required: true, description: 'Recipe id, e.g. `ninja-full`.' },
             command: {
               type: 'string', required: true,
-              description: 'Server command template. Use `{cwd}` for the uploaded tree directory.',
+              description: 'Server command template, run inside the project directory. `{cwd}` is that directory and `{out}` the recipe\'s output directory.',
+            },
+            outputDirectory: {
+              type: 'string',
+              description: 'Absolute server directory this recipe\'s products land in; defaults to `<projectDirectory>/out`. Set it per recipe: a whole build and a module build write to different places.',
             },
           },
         },
+      },
+      captureRevision: {
+        type: 'boolean',
+        description: 'Record the server-side source revision with each run (`repo manifest -r`, else `git rev-parse HEAD`). Off by default; it costs a walk of the tree.',
       },
       title: { type: 'string', description: 'Human label for the server picker; defaults to the id.' },
       timeoutMs: { type: 'number', description: 'Per-run wall clock budget in milliseconds; defaults to 900000.' },
@@ -135,15 +146,16 @@ function registerRemoteTools(ctx: Context): void {
       if (workspaceId === undefined) return { ok: false, error: 'no active project' }
       const recipes = recipeMap(args.recipes)
       if (recipes === undefined) {
-        return { ok: false, error: 'recipes must be a non-empty array of { id, command }' }
+        return { ok: false, error: 'recipes must be a non-empty array of { id, command, outputDirectory? }' }
       }
       const declared = await ctx.yxspecRemote.declare(workspaceId, {
         id: args.serverId,
         title: typeof args.title === 'string' && args.title.length > 0 ? args.title : args.serverId,
         destination: args.destination,
-        baseDirectory: args.baseDirectory,
+        projectDirectory: args.projectDirectory,
         transport: 'ssh',
         recipes,
+        ...args.captureRevision === true ? { captureRevision: true } : {},
         ...typeof args.sshExecutable === 'string' && args.sshExecutable.length > 0
           ? { sshExecutable: args.sshExecutable }
           : {},
@@ -156,37 +168,69 @@ function registerRemoteTools(ctx: Context): void {
   ctx.tools.register(defineTool({
     name: 'remote_build',
     description:
-      'Run one declared recipe on a declared build server: archive the project tree, upload it to the '
-      + 'server\'s scratch directory, run the recipe, and return the log and exit code. A failing build is '
-      + 'returned as data, not as an error — read `exitCode` and `log`. Every run is recorded with its tree '
-      + 'digest and log digest.',
+      'Run one declared recipe on a declared build server: execute it inside the server\'s declared project '
+      + 'directory and return the log and exit code. Nothing is uploaded — the checkout is already on that '
+      + 'machine, and a run neither creates nor clears the directory. A failing build is returned as data, not '
+      + 'as an error: read `exitCode` and `log`. Every run is recorded with its command, log digest, and — when '
+      + 'the declaration asks for it — the source revision it compiled.',
     parameters: {
       serverId: { type: 'string', required: true, description: 'The declared server to run on.' },
       recipe: { type: 'string', required: true, description: 'The recipe id; must be one the server declares.' },
-      sourceDirectory: {
-        type: 'string',
-        description: 'Absolute local directory to upload; omit for the project\'s primary root.',
-      },
-      push: { type: 'boolean', description: 'Set false to run against whatever is already on the server.' },
       extraArgs: { type: 'string', description: 'Extra shell text appended to the recipe, for a one-off flag.' },
+      fetch: {
+        type: 'array',
+        description: 'Products to bring back after the run, as paths relative to the output directory.',
+        items: { type: 'string', description: 'A path inside the output directory, e.g. `system.img`.' },
+      },
+      fetchInto: {
+        type: 'string',
+        description: 'Absolute local directory the fetched products land in, under a per-run subdirectory. Required when `fetch` is set.',
+      },
       workspaceId: { type: 'string', description: 'The project id; omit to use the active project.' },
     },
     output: JSON_TOOL_OUTPUT,
     async execute(args, exec) {
       const workspaceId = resolveWorkspaceId(ctx, args.workspaceId, exec)
       if (workspaceId === undefined) return { ok: false, error: 'no active project' }
+      const fetch = fetchList(args.fetch)
       const result = await ctx.yxspecRemote.run(workspaceId, {
         serverId: args.serverId,
         recipe: args.recipe,
-        ...typeof args.sourceDirectory === 'string' && args.sourceDirectory.length > 0
-          ? { sourceDirectory: args.sourceDirectory }
-          : {},
-        ...typeof args.push === 'boolean' ? { push: args.push } : {},
         ...typeof args.extraArgs === 'string' && args.extraArgs.length > 0 ? { extraArgs: args.extraArgs } : {},
+        ...fetch === undefined ? {} : { fetch },
+        ...typeof args.fetchInto === 'string' && args.fetchInto.length > 0 ? { fetchInto: args.fetchInto } : {},
       }, exec.signal)
-      return { ok: result.exitCode === 0, workspaceId, ...result }
+      // The fetch list is projected to plain objects: the tool output is JSON, and the host's
+      // readonly view of it is not assignable to a mutable JSON value.
+      const { fetched, ...rest } = result
+      return {
+        ok: result.exitCode === 0,
+        workspaceId,
+        ...rest,
+        ...fetched === undefined
+          ? {}
+          : {
+            fetched: fetched.map(entry => ({
+              path: entry.path,
+              localPath: entry.localPath,
+              bytes: entry.bytes,
+              error: entry.error ?? null,
+            })),
+          },
+      }
     },
   }), { when: whenYxspecProject(ctx) })
+}
+
+/**
+ * The requested product paths, or `undefined` when the call named none.
+ * @param value - the tool argument as the pipeline delivered it.
+ * @returns the paths, or undefined when the argument carries nothing usable.
+ */
+function fetchList(value: unknown): readonly string[] | undefined {
+  if (!Array.isArray(value) || value.length === 0) return undefined
+  const paths = value.filter((entry): entry is string => typeof entry === 'string' && entry.length > 0)
+  return paths.length === 0 ? undefined : paths
 }
 
 /**
@@ -207,7 +251,7 @@ function whenYxspecProject(ctx: Context) {
 }
 
 /**
- * Convert the tool's `{ id, command }` list into the declaration's recipe map.
+ * Convert the tool's recipe list into the declaration's recipe map.
  *
  * Returns `undefined` rather than a partial map so a malformed entry fails the
  * whole declaration instead of silently dropping one recipe a stage gate might
@@ -215,19 +259,34 @@ function whenYxspecProject(ctx: Context) {
  * @param value - the raw tool argument.
  * @returns the recipe map, or `undefined` when any entry is unusable.
  */
-function recipeMap(value: unknown): Record<string, string> | undefined {
+function recipeMap(value: unknown): Record<string, YxspecRemoteRecipe> | undefined {
   if (!Array.isArray(value) || value.length === 0) return undefined
-  const out: Record<string, string> = {}
+  const out: Record<string, YxspecRemoteRecipe> = {}
   for (const entry of value) {
     /* v8 ignore next -- the tool schema types `recipes` as an array of objects with
      * `additionalProperties: false`, and the pipeline validates arguments against it before
      * dispatch, so a non-object entry cannot reach this loop. The check is the type-level
      * obligation for an `unknown[]`, not a live path. */
     if (typeof entry !== 'object' || entry === null) return undefined
-    const { id, command } = entry as { id?: unknown; command?: unknown }
+    const { id, command, outputDirectory } = entry as {
+      id?: unknown
+      command?: unknown
+      outputDirectory?: unknown
+    }
     if (typeof id !== 'string' || id.trim().length === 0) return undefined
     if (typeof command !== 'string' || command.trim().length === 0) return undefined
-    out[id] = command
+    /* v8 ignore next 2 -- the schema types `outputDirectory` as a string and the pipeline
+     * validates arguments against it before dispatch, so only `undefined` or a string reaches
+     * here. The check is the type-level obligation for an `unknown` field, and a blank string is
+     * the one unusable value it leaves in reach — a directory the operator typed is passed
+     * through for the service's own absolute-path check. */
+    if (outputDirectory !== undefined && typeof outputDirectory !== 'string') return undefined
+    out[id] = {
+      command,
+      ...typeof outputDirectory === 'string' && outputDirectory.trim().length > 0
+        ? { outputDirectory: outputDirectory.trim() }
+        : {},
+    }
   }
   return out
 }

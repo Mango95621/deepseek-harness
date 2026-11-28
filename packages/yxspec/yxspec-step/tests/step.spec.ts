@@ -13,7 +13,7 @@
 import { afterEach, describe, expect, it } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
-import { writeFileSync, mkdirSync } from 'node:fs'
+import { writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { brandString } from '@deepseek-ai/dsh-brand'
@@ -137,8 +137,7 @@ async function invoke(ctx: Context, name: 'yxspec_status' | 'yxspec_next', args:
  *
  * The driver's tools carry a project-scoped activation guard, so the harness
  * also mounts the two services that guard reads and writes the project's own
- * `project/config/yxspec.json` marker — the same declaration a real YXSpec
- * project carries.
+ * `yxspec.json` marker — the same declaration a real YXSpec project carries.
  */
 async function harness(
   config: Parameters<typeof yxspecStep.apply>[1] = {},
@@ -178,8 +177,7 @@ function provideProjectScope(ctx: Context, root: string): void {
       : undefined,
   } as never)
   ctx.provide('workingDirectory', { get: () => root } as never)
-  mkdirSync(join(root, 'project', 'config'), { recursive: true })
-  writeFileSync(join(root, 'project', 'config', 'yxspec.json'), '{}', 'utf8')
+  writeFileSync(join(root, 'yxspec.json'), '{}', 'utf8')
 }
 
 /** A stub tool the pipeline can dispatch when a test needs an agent identity. */
@@ -460,7 +458,7 @@ describe('plugin wiring', () => {
     const { ctx, root } = await harness()
     // Drop the marker the harness wrote, leaving the project otherwise intact —
     // which is exactly the state of a project that never ran the wizard.
-    await rm(join(root, 'project'), { recursive: true, force: true })
+    await rm(join(root, 'yxspec.json'), { force: true })
     const agent = fakeAgent()
     const toolSet = await ctx.tools.resolve({
       agent,

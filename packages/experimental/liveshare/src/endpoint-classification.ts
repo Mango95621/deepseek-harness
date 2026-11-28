@@ -232,6 +232,9 @@ export const VIEWER_ENDPOINT_CLASSES = {
   'yxspec/documents': 'owner-only', // owner YXSpec document picker; it enumerates the project's own tree
   'yxspec/status': 'owner-only', // owner YXSpec process panel; a viewer gets no ASPICE stage view
   'yxspecRemote/servers': 'owner-only', // owner build-server list; it names deployment hosts and recipes
+  'yxspecRemote/browseServer': 'owner-only', // owner directory picker; it lists another machine's filesystem
+  'yxspecRemote/probeServer': 'owner-only', // owner connection test; it runs a command on a deployment host
+  'yxspecRemote/declareServer': 'owner-only', // owner build-server declaration; it writes durable project configuration
   'agentPresets/list': 'owner-only', // owner agent presets
   'agentPresets/read': 'owner-only', // owner agent presets
   'agentPresets/select': 'owner-only', // owner agent presets

@@ -10,21 +10,18 @@
  * unchanged, and it keeps every credential out of the harness.
  *
  * Three steps, each independently diagnosable:
- * 1. `tar` archives the local tree to a temporary file (exclusions applied).
- * 2. One `ssh` call pipes that archive into a server-side `tar -x`.
- * 3. One `ssh` call runs the recipe in the extracted tree.
+ * 1. One `ssh` call reads the server-side source revision (when the declaration asks).
+ * 2. One `ssh` call runs the recipe in the declared project directory.
+ * 3. One `ssh` call streams the named products back as a `tar.gz`, expanded locally.
  *
- * The archive travels as a byte stream over the client's stdin, never as a
- * command argument: a tree that does not fit in `ARG_MAX` is the normal case,
- * not an edge one.
+ * The seam moves bytes in one direction only — products come back, source never
+ * goes out. A tree that already lives on the build machine is not something this
+ * module could usefully copy: an automotive checkout is hundreds of gigabytes,
+ * and copying it per run would cost more than the build.
  * @module @deepseek-ai/dsh-yxspec-remote/ssh
  */
 
-import { createHash } from 'node:crypto'
-import { createReadStream } from 'node:fs'
-import { mkdtemp, rm, stat } from 'node:fs/promises'
-import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { createWriteStream } from 'node:fs'
 import type { SubprocessHandle, SubprocessRuntime } from '@deepseek-ai/dsh-subprocess'
 
 /**
@@ -271,147 +268,135 @@ export async function runRemote(
   }
 }
 
-/** One created archive: its path, byte size, and content digest. */
-export interface TreeArchive {
-  /** Absolute path to the temporary archive. */
-  readonly path: string
-  /** Archive size in bytes. */
+/** Where a fetched archive is written before it is extracted. */
+export interface FetchTarget {
+  /** Absolute local directory the archive is written to. */
+  readonly archivePath: string
+  /** Byte ceiling for this transfer; the transfer is aborted past it. */
+  readonly maxBytes: number
+}
+
+/** What one fetch produced, as the caller reports it. */
+export interface FetchedArchive {
+  /** Bytes written to {@link FetchTarget.archivePath}. */
   readonly bytes: number
-  /** SHA-256 of the archive, the run's input identity. */
-  readonly digest: string
-  /** Remove the archive and its staging directory. */
-  readonly dispose: () => Promise<void>
+  /** What the client or the remote tool reported, when the transfer failed; absent on success. */
+  readonly error?: string
 }
 
 /**
- * Archive a local directory into a temporary `.tar.gz`.
+ * Stream the named server paths back as one `.tar.gz`.
  *
- * The archive is a portable `tar.gz` rather than a copied tree because a copy
- * would need per-file remote calls; one streamed archive is one round trip
- * regardless of file count. Exclusions are passed to `tar` itself so a large
- * ignored subtree is never read.
- * @param runtime - the subprocess provider a child is started on.
- * @param tarExecutable - resolved archive tool.
- * @param sourceDirectory - absolute directory to archive.
- * @param excludes - directory/file patterns to omit.
- * @param options - cancellation.
- * @returns the staged archive and its digest.
- * @throws when archiving fails; the staging directory is removed first.
- */
-export async function archiveTree(
-  runtime: SubprocessSpawn,
-  tarExecutable: string,
-  sourceDirectory: string,
-  excludes: readonly string[],
-  options: { signal?: AbortSignal | undefined } = {},
-): Promise<TreeArchive> {
-  const info = await stat(sourceDirectory)
-  if (!info.isDirectory()) throw new Error(`not a directory: ${sourceDirectory}`)
-
-  const staging = await mkdtemp(join(tmpdir(), 'dsh-yxspec-remote-'))
-  const archivePath = join(staging, 'tree.tar.gz')
-  const exclusionArgs: string[] = []
-  for (const pattern of excludes) {
-    if (pattern.length === 0) continue
-    exclusionArgs.push('--exclude', pattern)
-  }
-  const result = await runLocal(
-    runtime,
-    [tarExecutable, '-czf', archivePath, ...exclusionArgs, '-C', sourceDirectory, '.'],
-    { cwd: staging, signal: options.signal },
-  ).catch(async (error: unknown) => {
-    await rm(staging, { recursive: true, force: true })
-    throw error
-  })
-  if (result.exitCode !== 0) {
-    await rm(staging, { recursive: true, force: true })
-    throw new Error(
-      `tar failed (exit ${String(result.exitCode)}): ${(result.stderr || result.stdout).trim()}`,
-    )
-  }
-
-  const digest = await digestFile(archivePath)
-  const archived = await stat(archivePath)
-  return {
-    path: archivePath,
-    bytes: archived.size,
-    digest,
-    dispose: async () => { await rm(staging, { recursive: true, force: true }) },
-  }
-}
-
-/** SHA-256 of a file, read as a stream so a large archive never lands in memory. */
-async function digestFile(path: string): Promise<string> {
-  const hash = createHash('sha256')
-  await new Promise<void>((resolve, reject) => {
-    createReadStream(path)
-      .on('data', (chunk) => { hash.update(chunk) })
-      .on('error', reject)
-      .on('end', () => { resolve() })
-  })
-  return hash.digest('hex')
-}
-
-/**
- * Extract a staged archive on the server.
+ * The archive travels as a byte stream on the client's stdout rather than as a
+ * copied tree, for the same reason the upload path once used stdin: one streamed
+ * archive is one round trip regardless of file count.
  *
- * The archive arrives on the client's stdin, which the subprocess service
- * exposes as a real byte channel, so the payload is never re-encoded as text
- * and never appears in the process argument list.
+ * `--` before the paths and `-C` before the directory keep a product name from
+ * being read as an option, and the caller has already refused names that could
+ * escape the output directory. The byte ceiling is enforced while writing, so an
+ * accidental `out/` of a whole tree stops the transfer instead of filling the
+ * disk.
  * @param runtime - the subprocess provider a child is started on.
  * @param sshExecutable - resolved OpenSSH client.
  * @param destination - OpenSSH destination.
- * @param remoteDirectory - absolute server directory to extract into.
- * @param archivePath - the local archive file.
+ * @param outputDirectory - absolute server directory the paths are relative to.
+ * @param paths - product paths relative to that directory.
+ * @param target - local archive path and byte ceiling.
  * @param options - cancellation and deadline.
- * @returns exit facts; a nonzero exit means nothing usable was extracted.
+ * @returns the bytes written and any failure the client reported.
  */
-export async function pushArchive(
+export async function fetchArchive(
   runtime: SubprocessSpawn,
   sshExecutable: string,
   destination: string,
-  remoteDirectory: string,
-  archivePath: string,
+  outputDirectory: string,
+  paths: readonly string[],
+  target: FetchTarget,
   options: { timeoutMs: number; signal?: AbortSignal | undefined },
-): Promise<RemoteCommandResult> {
+): Promise<FetchedArchive> {
   const timeout = AbortSignal.timeout(options.timeoutMs)
   const signal = options.signal === undefined ? timeout : AbortSignal.any([options.signal, timeout])
-  // `set -e` makes the extraction the command's verdict; `rm -rf` first keeps a
-  // previous run's leftovers from surviving into this one.
-  const command = `set -e; rm -rf -- '${remoteDirectory}'; mkdir -p -- '${remoteDirectory}'; tar -xzf - -C '${remoteDirectory}'`
+  const command = [
+    'set -e',
+    `cd '${outputDirectory}'`,
+    `tar -czf - -- ${paths.map(path => `'${path}'`).join(' ')}`,
+  ].join('; ')
   const handle = runtime.spawn({
     argv: [sshExecutable, ...sshArgv(destination, command)],
     cwd: process.cwd(),
     stdio: {
-      stdin: 'pipe',
-      stdout: { maxBytes: 256 * 1024 },
+      stdin: 'ignore',
+      stdout: 'pipe',
       stderr: { maxBytes: STDERR_TAIL_BYTES },
     },
     graceMs: TERMINATE_GRACE_MS,
     signal,
   })
-  const stdin = handle.stdin
-  /* v8 ignore next 3 -- `stdin: 'pipe'` always yields a writable. */
-  if (stdin === undefined) {
+  const output = handle.stdout
+  /* v8 ignore next 3 -- `stdout: 'pipe'` always yields a readable. */
+  if (output === undefined) {
     handle.terminate()
     throw new Error('subprocess provider did not expose the pipe requested for the archive stream')
   }
-  await new Promise<void>((resolve, reject) => {
-    const source = createReadStream(archivePath)
-    source.on('error', reject)
-    stdin.on('error', reject)
-    stdin.on('finish', () => { resolve() })
-    source.pipe(stdin)
-  }).catch((error: unknown) => {
-    handle.terminate()
-    throw error
-  })
+  const sink = createWriteStream(target.archivePath)
+  let bytes = 0
+  let overflow = false
+  try {
+    await new Promise<void>((resolve, reject) => {
+      output.on('data', (chunk: Buffer) => {
+        bytes += chunk.byteLength
+        if (bytes > target.maxBytes) {
+          overflow = true
+          // Destroying the stream rather than the handle: the transfer stops, and the
+          // settle below still reads the client's own exit facts and stderr tail.
+          output.destroy()
+          handle.terminate()
+          return
+        }
+        sink.write(chunk)
+      })
+      output.on('error', reject)
+      sink.on('error', reject)
+      output.on('end', () => { resolve() })
+    })
+  } finally {
+    await new Promise<void>((resolve) => { sink.end(resolve) })
+  }
   const outcome = await settled(handle)
-  return {
-    exitCode: outcome.exitCode,
-    stdout: outcome.stdout.text,
-    stderr: outcome.stderr,
-    truncated: outcome.stdout.lossy,
-    timedOut: timeout.aborted,
+  if (overflow) {
+    return {
+      bytes,
+      error: `the products exceed the ${String(target.maxBytes)}-byte fetch ceiling; `
+        + 'name fewer or smaller paths',
+    }
+  }
+  if (outcome.exitCode !== 0) {
+    return { bytes, error: outcome.stderr.trim() || `remote tar exited ${String(outcome.exitCode)}` }
+  }
+  return { bytes }
+}
+
+/**
+ * Extract a fetched archive into a local directory.
+ * @param runtime - the subprocess provider a child is started on.
+ * @param tarExecutable - resolved archive tool.
+ * @param archivePath - the local archive to expand.
+ * @param into - absolute local directory to expand into; it must exist.
+ * @param options - cancellation.
+ * @throws when the local extraction fails.
+ */
+export async function extractArchive(
+  runtime: SubprocessSpawn,
+  tarExecutable: string,
+  archivePath: string,
+  into: string,
+  options: { signal?: AbortSignal | undefined } = {},
+): Promise<void> {
+  const result = await runLocal(runtime, [tarExecutable, '-xzf', archivePath, '-C', into], {
+    cwd: into,
+    signal: options.signal,
+  })
+  if (result.exitCode !== 0) {
+    throw new Error(`tar failed (exit ${String(result.exitCode)}): ${(result.stderr || result.stdout).trim()}`)
   }
 }

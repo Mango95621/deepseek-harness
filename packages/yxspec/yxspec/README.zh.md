@@ -45,8 +45,10 @@ kind: "package-reference"
 | `workspaceRoot` | cwd | 流程所处的工作区根；相对路径按 cwd 解析 |
 | `identity` | 取自 `yxspec.json` | 要报告的规格标识；显式取值优先于文件 |
 | `trackMapPath` | `swe-track-map.json` | 工作区相对的双轨映射；文件缺失时得到空领域清单而非失败 |
-| `projectConfigPath` | — | 项目自有的 `yxspec.json`，其标识字段为 `identity` 提供种子 |
+| `projectConfigPath` | 见下 | 项目自有的 `yxspec.json`，其标识字段为 `identity` 提供种子 |
 | `stages` | `DEFAULT_STAGES` | 已声明的阶段模型；替换它即让部署运行自己的流程 |
+
+省略 `projectConfigPath` 时，服务在 `workspaceRoot` 下依次查找 `yxspec.json`（项目根）与 `project/config/yxspec.json`（旧布局），取第一个存在者。根文件优先，因此迁移只需新增文件而非删除旧文件；只写过旧路径的部署继续可用。
 
 生成的[配置目录](../../../docs/config-catalog.zh.md#deepseek-aidsh-yxspec)是全部可接受字段的完整来源。
 

@@ -51,7 +51,7 @@ async function seed(root: string, rel: string, body = 'x'): Promise<void> {
 describe('readDocumentCandidates against a filesystem that is changing', () => {
   it('drops a file that vanished before it could be sized', async () => {
     const root = await scratch()
-    await seed(root, 'specs/spec.md')
+    await seed(root, 'project/specs/spec.pdf')
 
     // The file was listed a moment ago and is gone by the time it is stat'd.
     vi.spyOn(fs, 'stat').mockRejectedValueOnce(
@@ -63,8 +63,8 @@ describe('readDocumentCandidates against a filesystem that is changing', () => {
 
   it('drops a file whose size it may not read, without failing the rest', async () => {
     const root = await scratch()
-    await seed(root, 'specs/locked.md')
-    await seed(root, 'specs/readable.md')
+    await seed(root, 'project/specs/locked.pdf')
+    await seed(root, 'project/specs/readable.pdf')
 
     // One unreadable entry must not cost the operator the whole listing.
     vi.spyOn(fs, 'stat').mockRejectedValueOnce(
@@ -82,20 +82,20 @@ describe('readDocumentCandidates against a filesystem that is changing', () => {
     // on the last one, and the `for` ends instead of returning early — so the
     // walk comes back around to the loop head with an unvisited directory and a
     // full list. That is the only state the loop-head check exists for.
-    await mkdir(join(root, 'specs', 'later'), { recursive: true })
-    await seed(root, 'specs/later/unreached.md')
-    for (let i = 0; i < 200; i++) await seed(root, `specs/f${String(i).padStart(3, '0')}.md`)
+    await mkdir(join(root, 'project', 'later'), { recursive: true })
+    await seed(root, 'project/later/unreached.pdf')
+    for (let i = 0; i < 200; i++) await seed(root, `project/f${String(i).padStart(3, '0')}.pdf`)
 
     // The root listing is answered from a fixed, directory-first order; every
     // other path falls through to the real filesystem, so this is a reordering
     // and not a reimplementation of readdir.
     const actual = await vi.importActual<typeof import('node:fs/promises')>('node:fs/promises')
     vi.spyOn(fs, 'readdir').mockImplementation((async (path: unknown, options: unknown) => {
-      if (path !== join(root, 'specs')) return await actual.readdir(path as never, options as never)
+      if (path !== join(root, 'project')) return await actual.readdir(path as never, options as never)
       return [
         { name: 'later', isDirectory: () => true, isFile: () => false },
         ...Array.from({ length: 200 }, (_unused, i) => ({
-          name: `f${String(i).padStart(3, '0')}.md`, isDirectory: () => false, isFile: () => true,
+          name: `f${String(i).padStart(3, '0')}.pdf`, isDirectory: () => false, isFile: () => true,
         })),
       ]
     }) as never)
@@ -103,5 +103,24 @@ describe('readDocumentCandidates against a filesystem that is changing', () => {
     const found = await readDocumentCandidates(registry([root]), 'p1')
     expect(found).toHaveLength(200)
     expect(found.some(view => view.title === 'unreached')).toBe(false)
+  })
+
+  it('skips an entry that is neither a file nor a directory', async () => {
+    const root = await scratch()
+    await seed(root, 'project/real.pdf')
+
+    // A dangling symlink is the real case: the walk takes files and descends directories, and an
+    // entry that is neither is one it can offer nothing for. Answered here rather than created on
+    // disk, because making a symlink needs a privilege this suite must not require.
+    const actual = await vi.importActual<typeof import('node:fs/promises')>('node:fs/promises')
+    vi.spyOn(fs, 'readdir').mockImplementation((async (path: unknown, options: unknown) => {
+      if (path !== join(root, 'project')) return await actual.readdir(path as never, options as never)
+      return [
+        { name: 'real.pdf', isDirectory: () => false, isFile: () => true },
+        { name: 'dangling.pdf', isDirectory: () => false, isFile: () => false },
+      ]
+    }) as never)
+
+    await expect(readDocumentCandidates(registry([root]), 'p1')).resolves.toHaveLength(1)
   })
 })

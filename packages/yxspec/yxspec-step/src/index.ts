@@ -59,7 +59,7 @@ export const inject = ['tools', 'yxspec', 'yxspecArtifacts', 'workingDirectory',
  *
  * A `false` result excludes the tool from both the step's declarations and its
  * dispatch, so the reduction is real at the model boundary rather than advisory.
- * The marker is the project's own `project/config/yxspec.json`, read through the
+ * The marker is the project's own `yxspec.json`, read through the
  * same predicate the domain service and the build-server tools use — so "the
  * wizard showed me YXSpec steps" and "the model has the step tools" cannot
  * disagree.

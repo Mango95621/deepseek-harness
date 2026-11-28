@@ -10,10 +10,17 @@
  * appended to the step count.
  */
 
-import { cleanup, render, screen } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { makeTranslate } from '@deepseek-ai/dsh-client-test-runtime'
-import type { YxspecStatusValue, YxspecStageView } from '@deepseek-ai/dsh-yxspec-api/types'
+import type { SessionListState } from '@deepseek-ai/dsh-api-session-controller/client'
+import type { WorkspaceSnapshot } from '@deepseek-ai/dsh-api-workspace-controller/client'
+import type {
+  YxspecRemoteProbe,
+  YxspecRemoteServerView,
+  YxspecStatusValue,
+  YxspecStageView,
+} from '@deepseek-ai/dsh-yxspec-api/types'
 import { YxspecSection } from '../src/client/YxspecPanel.tsx'
 import type { YxspecSectionProps } from '../src/client/slots.ts'
 import { zh } from '../src/client/locales.ts'
@@ -47,9 +54,50 @@ function step(id: string, frozen = false): YxspecStageView['steps'][number] {
   return { id, cell: `${id}.md`, title: id, frozen, requiredInputs: [], hasGateScript: false }
 }
 
-/** Render the section with one loader outcome. */
-function view(load: YxspecSectionProps['load']) {
-  return render(<YxspecSection {...{ load, t } as YxspecSectionProps} />)
+/** One declared server, with whatever its last probe concluded. */
+function server(overrides: Partial<YxspecRemoteServerView> = {}): YxspecRemoteServerView {
+  return {
+    serverId: 'build-1',
+    title: 'Build farm',
+    destination: 'ci@farm',
+    projectDirectory: '/srv/aosp',
+    transport: 'ssh',
+    recipeIds: ['ninja-full'],
+    declaredAt: '2026-01-01T00:00:00.000Z',
+    ...overrides,
+  }
+}
+
+/** A ready catalogue naming one session, which is the project the section resolves. */
+const SESSIONS = { ids: ['s1'], byId: { s1: { retainedBy: { mainView: 1 } } } } as unknown as SessionListState
+const WORKSPACES = {
+  phase: 'ready',
+  items: [{ workspaceId: 'ws-1', roots: ['/work'], path: '/work', title: 'ivi', sessionIds: ['s1'] }],
+} as unknown as WorkspaceSnapshot
+
+/**
+ * Render the section with one loader outcome and one build-server answer.
+ *
+ * The catalogues are supplied because the section resolves the project for itself, the way the
+ * skeleton's global and session standard props deliver them.
+ */
+function view(load: YxspecSectionProps['load'], options: {
+  servers?: readonly YxspecRemoteServerView[]
+  loadServers?: YxspecSectionProps['loadServers']
+  probeServer?: YxspecSectionProps['probeServer']
+  probing?: (workspaceId: string, serverId: string) => void
+} = {}) {
+  const loadServers = options.loadServers ?? (() => Promise.resolve([...(options.servers ?? [])]))
+  const probeServer = options.probeServer ?? (async (workspaceId: string, serverId: string) => {
+    options.probing?.(workspaceId, serverId)
+    return { serverId, reachable: true, platform: 'Linux' } satisfies YxspecRemoteProbe
+  })
+  const props = {
+    load, loadServers, probeServer, t,
+    useWorkspaces: <S,>(select: (value: WorkspaceSnapshot) => S): S => select(WORKSPACES),
+    useSessions: <S,>(select: (value: SessionListState) => S): S => select(SESSIONS),
+  } as unknown as YxspecSectionProps
+  return render(<YxspecSection {...props} />)
 }
 
 /** The loader that resolves the given value; never refuses. */
@@ -58,6 +106,96 @@ function resolving(value: YxspecStatusValue | undefined): YxspecSectionProps['lo
 }
 
 describe('YxspecSection', () => {
+  it('lists the declared servers with what their last probe concluded', async () => {
+    const section = view(resolving(status([])), {
+      servers: [
+        server({ lastProbeAt: '2026-02-03T04:05:06.000Z', lastPlatform: 'Linux' }),
+        server({ serverId: 'build-2', title: 'Spare', lastProbeAt: '2026-02-03T04:05:06.000Z', lastProbeError: 'Connection refused' }),
+        server({ serverId: 'build-3', title: 'Untested' }),
+      ],
+    })
+
+    // The three states, in the order an operator reads them: reachable, failed with the host's own
+    // words, and never tried. Each is a dot — green, red, grey — and the failure is the one that
+    // also shows the line behind it.
+    await vi.waitFor(() => { expect(screen.getByText(zh['section.servers'])).toBeTruthy() })
+    const rows = [...section.container.querySelectorAll('.yxspec-server')]
+    expect(rows.map(row => row.querySelector('[data-state]')?.getAttribute('data-state')))
+      .toEqual(['done', 'error', 'idle'])
+    expect(screen.getByText(zh['server.reachableOn'].replace('{platform}', 'Linux'))).toBeTruthy()
+    expect(screen.getByText(zh['server.unreachable'].replace('{error}', 'Connection refused'))).toBeTruthy()
+    expect(screen.getByText(zh['server.neverProbed'])).toBeTruthy()
+    expect(rows).toHaveLength(3)
+  })
+
+  it('reports a connection whose probe named no platform as connected all the same', async () => {
+    // The platform is a detail of a success rather than a state of its own: a host that answered
+    // without one is reachable, and the row must not read as untested for the missing detail.
+    const section = view(resolving(status([])), {
+      servers: [server({ lastProbeAt: '2026-02-03T04:05:06.000Z' })],
+    })
+
+    await vi.waitFor(() => { expect(screen.getByText('Build farm')).toBeTruthy() })
+    expect(section.container.querySelector('.yxspec-server [data-state]')?.getAttribute('data-state')).toBe('done')
+    expect(screen.getByText(zh['server.reachable'])).toBeTruthy()
+  })
+
+  it('shows nothing about servers for a project that declared none', async () => {
+    view(resolving(status([])))
+    await vi.waitFor(() => { expect(screen.queryByText(zh['section.servers'])).toBeNull() })
+  })
+
+  it('keeps the server block when the process service itself is missing', async () => {
+    // Two independent readings: a deployment without the process service still has to say whether
+    // the machine that compiles is reachable, and vice versa.
+    const section = view(resolving(undefined), { servers: [server({ lastProbeError: 'Connection refused' })] })
+
+    await vi.waitFor(() => { expect(screen.getByText(zh.empty)).toBeTruthy() })
+    expect(section.container.querySelectorAll('.yxspec-server')).toHaveLength(1)
+    expect(screen.getByText(zh['server.unreachable'].replace('{error}', 'Connection refused'))).toBeTruthy()
+  })
+
+  it('reads a refusal to list servers as having none, not as a broken panel', async () => {
+    // The build-server namespace is optional: a deployment without it still shows the process.
+    const section = view(resolving(status([stage()])), { loadServers: () => Promise.reject(new Error('no namespace')) })
+    await vi.waitFor(() => { expect(screen.getByText('SYS.2')).toBeTruthy() })
+    expect(screen.queryByText(zh['section.servers'])).toBeNull()
+    expect(section.container.querySelector('[data-empty="true"]')).toBeNull()
+  })
+
+  it('tests one server on demand and re-reads the list afterwards', async () => {
+    const asked: { workspaceId: string; serverId: string }[] = []
+    let reads = 0
+    view(resolving(status([])), {
+      servers: [server()],
+      loadServers: () => { reads += 1; return Promise.resolve([server()]) },
+      probing: (workspaceId, serverId) => { asked.push({ workspaceId, serverId }) },
+    })
+    await vi.waitFor(() => { expect(screen.getByText('Build farm')).toBeTruthy() })
+
+    fireEvent.click(screen.getByRole('button', { name: zh['server.probe'] }))
+
+    // The write lives on the declaration, so the answer is read back rather than held: two reads,
+    // one the mount and one after the probe.
+    await vi.waitFor(() => { expect(asked).toEqual([{ workspaceId: 'ws-1', serverId: 'build-1' }]) })
+    expect(reads).toBe(2)
+  })
+
+  it('keeps the last recorded state when the test itself is refused', async () => {
+    const section = view(resolving(status([])), {
+      servers: [server({ lastProbeAt: '2026-02-03T04:05:06.000Z', lastPlatform: 'Linux' })],
+      probeServer: () => Promise.reject(new Error('the build-server namespace is not mounted')),
+    })
+    await vi.waitFor(() => { expect(screen.getByText('Build farm')).toBeTruthy() })
+
+    fireEvent.click(screen.getByRole('button', { name: zh['server.probe'] }))
+
+    // A refused call is not a verdict about the host, and this section owns no notice surface.
+    await vi.waitFor(() => {
+      expect(section.container.querySelectorAll('.yxspec-server')).toHaveLength(1)
+    })
+    expect(screen.getByText(zh['server.reachableOn'].replace('{platform}', 'Linux'))).toBeTruthy()
+  })
   it('shows the loading placeholder until the first read answers', () => {
     const pending = view(resolving(undefined))
     expect(pending.container.querySelector('[data-loading="true"]')).toBeTruthy()

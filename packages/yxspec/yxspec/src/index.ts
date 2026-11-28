@@ -18,7 +18,7 @@ import z from '@deepseek-ai/schemastery'
 import { readFile } from 'node:fs/promises'
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
-import { PROJECT_CONFIG_PATH } from './project.ts'
+import { resolveProjectConfigPath } from './project.ts'
 import type {
   YxspecDomainTarget,
   YxspecSnapshot,
@@ -251,11 +251,16 @@ export class YxspecService extends Service {
     // Identity resolution order: explicit config → project's own yxspec.json → placeholder.
     // Reading the project file means a deployment does not restate what the project already
     // declares, while an explicit config key still wins for a test or an override.
-    const projectPath = resolve(
-      this.workspaceRoot,
-      config.projectConfigPath ?? PROJECT_CONFIG_PATH,
-    )
-    const fromFile = readProjectIdentity(projectPath)
+    //
+    // The file itself is located through the shared candidate resolution rather than a single
+    // literal path, so this service, the tool guards that call `declaresYxspecProcess`, and the
+    // wizard's document enumeration all read the *same* file. An explicit `projectConfigPath`
+    // is honored verbatim: a deployment naming its own location is not asking for the fallback
+    // to be searched underneath it.
+    const projectPath = config.projectConfigPath !== undefined
+      ? resolve(this.workspaceRoot, config.projectConfigPath)
+      : resolveProjectConfigPath(this.workspaceRoot)
+    const fromFile = projectPath === undefined ? undefined : readProjectIdentity(projectPath)
     const pick = (key: keyof YxspecSpecIdentity): string =>
       asText(config.identity?.[key]) ?? asText(fromFile?.[key]) ?? 'unspecified'
     this.identity = {

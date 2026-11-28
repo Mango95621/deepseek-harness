@@ -1,0 +1,19 @@
+# Bilingual-pair consistency record for 2026-11-24-remote-build-runs-in-place.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write .agents/notes/implemented/architecture/2026-11-24-remote-build-runs-in-place.md
+/agent-note-a-remote-build-runs-in-the-checkout-the-server-already-holds:
+  en: 0c1f155405efc84d
+  zh: 214241ff07028272
+/agent-note-a-remote-build-runs-in-the-checkout-the-server-already-holds/problem:
+  en: c8be03bd8c211dcd
+  zh: 0a26a8fd6e00c155
+/agent-note-a-remote-build-runs-in-the-checkout-the-server-already-holds/decision:
+  en: c92dfb775b91147b
+  zh: e3d766363bbb52c8
+/agent-note-a-remote-build-runs-in-the-checkout-the-server-already-holds/alternatives-considered:
+  en: b2c7053159ae74a2
+  zh: d5e6ffdb98fe91b5
+/agent-note-a-remote-build-runs-in-the-checkout-the-server-already-holds/consequences:
+  en: 2f73d536065ce6ce
+  zh: d0a8cad5246cd6a1

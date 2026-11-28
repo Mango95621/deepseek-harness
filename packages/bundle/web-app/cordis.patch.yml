@@ -214,8 +214,9 @@
 
     # Remote compile verification: declared build servers plus remote_build /
     # remote_server_declare / remote_server_list over the platform's own OpenSSH
-    # client. Mounted after workspaceRegistry, whose primary root is the default
-    # archive source, and after storageDomain, which backs the run ledger.
+    # client. Runs the recipe in a directory that already exists on the server,
+    # so it reads no local project: mounted after storageDomain, which backs the
+    # run ledger, and nothing else.
     #
     # The SERVICE stays here; only the tools move behind presets, in the sibling
     # row below. The onboarding wizard's server step reads the `yxspecRemote`
@@ -224,7 +225,7 @@
     # build-server tool.
     - id: yxspec-remote
       name: '@deepseek-ai/dsh-yxspec-remote'
-      inject: [subprocess, storageDomain, workspaceRegistry]
+      inject: [subprocess, storageDomain]
 
     # The three model-facing build-server tools over the host service above.
     # Disabled here for the same reason `yxspec-step` is: a host-plane

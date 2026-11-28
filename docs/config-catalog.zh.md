@@ -5478,28 +5478,44 @@ export interface Config {
 
 ## `@deepseek-ai/dsh-yxspec-remote`
 
-- `inject`: `subprocess` · `workspaceRegistry` · `storageDomain`
-- `source`: [`packages/yxspec/yxspec-remote/src/index.ts:69`](../packages/yxspec/yxspec-remote/src/index.ts)
+- `inject`: `subprocess` · `storageDomain`
+- `source`: [`packages/yxspec/yxspec-remote/src/index.ts:76`](../packages/yxspec/yxspec-remote/src/index.ts)
 
 ```ts config-catalog
 /** Plugin configuration. */
 export interface Config {
   /**
-   * Exclusions applied when archiving a project tree. Build output is the bulk
-   * of an automotive tree and none of it is an input to a clean build, so the
-   * defaults are the usual suspects; a deployment extends rather than replaces.
+   * Local `ssh` to invoke when a declaration names none; the platform default is probed when absent.
+   *
+   * A deployment pins this to name the client every server should use — a bundled OpenSSH, or a
+   * wrapper of its own. The wrapper is how a password-only build host is reachable without this
+   * seam ever holding a credential: the client it points at receives the same argv the platform
+   * client would and supplies the password from wherever the deployment keeps it (an OS keychain,
+   * a file only that user can read), while the declaration stays a destination and nothing secret
+   * enters durable state that the audited agent can read.
    */
-  excludes?: string[]
-  /**
-   * Whether to push the source tree. Disabling it turns every run into
-   * "execute against whatever is already there", which is how a deployment with
-   * a pre-synced tree (or a server-side checkout) avoids re-uploading.
-   */
-  pushSource?: boolean
-  /** Absolute local `tar` to use; the platform default is probed when absent. */
+  sshExecutable?: string
+  /** Absolute local `tar` to use for expanding fetched products; the platform default is probed when absent. */
   tarExecutable?: string
   /** Output budget for a run's log, in bytes. */
   logMaxBytes?: number
+  /**
+   * Wall-clock budget for one probe, in milliseconds.
+   *
+   * A connection test that can outlive a build is not a connection test, so this is its own
+   * bound rather than the declaration's per-run budget; a run still uses the larger of the two
+   * only if the declaration is genuinely shorter. A deployment behind a slow jump host raises
+   * this, or the SSH client's own `ConnectTimeout` in its `~/.ssh/config`.
+   */
+  probeTimeoutMs?: number
+  /**
+   * Byte ceiling for one fetch.
+   *
+   * A build's products are the caller's to name, and naming a whole product tree by accident is
+   * one keystroke away, so the cap is enforced while the archive streams rather than after it
+   * lands on disk. A deployment that returns release images raises it deliberately.
+   */
+  fetchMaxBytes?: number
 }
 ```
 <!-- END GENERATED config-catalog:@deepseek-ai/dsh-yxspec-remote -->

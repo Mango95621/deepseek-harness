@@ -3,35 +3,35 @@
 # After editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write packages/yxspec/yxspec-remote/README.md
 /:
-  en: 92e3b79a6fc0f97d
-  zh: f6be1c5396494724
+  en: 51393c9fc825085b
+  zh: 0905f1791d127169
 /deepseek-ai-dsh-yxspec-remote:
   en: 42f910576ffcea55
   zh: c74222204876d415
 /deepseek-ai-dsh-yxspec-remote/summary:
-  en: 541331df4c564126
-  zh: 20521fa79e60ee98
+  en: b7eeffa5e9f9f34e
+  zh: 3d6d715bb6e81f4f
 /deepseek-ai-dsh-yxspec-remote/table-of-contents:
   en: d152484eb41ac6b4
   zh: 09388d293f9be9cb
 /deepseek-ai-dsh-yxspec-remote/use-this-package:
-  en: 1ed5960050f6c735
-  zh: 06282568128bcf51
+  en: cf04f3e661294ccc
+  zh: 4bc4f46dcb6c342a
 /deepseek-ai-dsh-yxspec-remote/use-this-package/when-to-choose-it:
-  en: 9bc82196b8a4e69f
-  zh: 67b1c4b99e50de28
+  en: 27fd43e3034da4e7
+  zh: 028e3e9d6945faec
 /deepseek-ai-dsh-yxspec-remote/use-this-package/minimal-configuration:
-  en: 6fcab202ec50bace
-  zh: 64bfd31459f225e1
+  en: 28bf0ab52827de55
+  zh: 672529b4a0617381
 /deepseek-ai-dsh-yxspec-remote/use-this-package/declaring-a-server:
-  en: 54473586c22a2182
-  zh: 66773b077f7664fd
+  en: 696c539c46833436
+  zh: 6bf516131b2ff681
 /deepseek-ai-dsh-yxspec-remote/understand-the-implementation:
-  en: 8d3e2b2263c89516
-  zh: de93a4fe52ba5e09
+  en: 5fd916b82d0f18c8
+  zh: 5e9d7a1fbb9cf6b3
 /deepseek-ai-dsh-yxspec-remote/understand-the-implementation/source-map:
-  en: af5865ca2b352732
-  zh: 42b1c09747551efd
+  en: 7a856337e4cf9571
+  zh: 1b5d5b7f716a365d
 /deepseek-ai-dsh-yxspec-remote/further-exploration:
   en: 360be65d4d55493b
   zh: a2dbc61fbf978114
@@ -57,8 +57,8 @@
   en: 2928652c4dc255ac
   zh: 11be05c337a6616f
 /deepseek-ai-dsh-yxspec-remote/model-experience/declared-server-declaration-tool/what-the-model-sees:
-  en: 3839fa4c45bc1601
-  zh: d1109ac5db17b8d6
+  en: f672d49fa5094480
+  zh: 941d80b80081d681
 /deepseek-ai-dsh-yxspec-remote/model-experience/declared-server-declaration-tool/what-the-model-sees/declaration-confirmation:
   en: 584f45d671e80b6c
   zh: 3c2a879f25d478b7
@@ -69,8 +69,8 @@
   en: fb53dbc8c1e02abb
   zh: d02531ac2f601e18
 /deepseek-ai-dsh-yxspec-remote/known-limitations-and-deferred-work:
-  en: e6e6c756fe19657a
-  zh: 07e37f9cff680404
+  en: 0817660556da79ae
+  zh: c10760b2ad354d4b
 /deepseek-ai-dsh-yxspec-remote/known-limitations-and-deferred-work/dev-note:
   en: e67f633dc6fe7773
   zh: 3bb0c20c93f16f98
