@@ -192,8 +192,11 @@ function ProjectRow({
   const drag = actions.reorder ? offeredDrag : undefined
   const create = actions.create
   const row = group
-  // The ungrouped bucket has no workspace title: its label is dictionary copy.
-  const label = row.workspaceId === undefined ? t('group.ungrouped') : row.label
+  // The ungrouped bucket has no workspace title: its label is dictionary copy, and the hint says
+  // why the row offers no menu — a group whose project is gone has nothing to rename or delete.
+  const ungrouped = row.workspaceId === undefined
+  const label = ungrouped ? t('group.ungrouped') : row.label
+  const hint = ungrouped ? t('group.ungroupedHint') : undefined
   const active = containsCurrentDescendant || (group.expanded && group.containsCurrent)
   const menuOpen = useContextMenuTarget(target => target?.kind === 'workspace' && target.value.workspaceId === row.workspaceId)
   const dragPreview = useRowDragPreview(css.dragPreview as string, DRAG_PREVIEW_PROPERTIES)
@@ -205,6 +208,7 @@ function ProjectRow({
       data-row-key={`workspace:${group.key}`}
       role="treeitem"
       aria-expanded={row.expanded}
+      {...hint === undefined ? {} : { title: hint }}
       onClick={onToggle}
       {...getTriggerProps(workspaceMenuTarget === undefined ? undefined : { kind: 'workspace', value: { ...workspaceMenuTarget, displayTitle: label } })}
       draggable={drag !== undefined}
