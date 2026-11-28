@@ -592,8 +592,10 @@ Durable workspace registry. Startup waits for `sessionPersistence`, builds one c
  * to match on — and a rootless call therefore always creates. A newly
  * created project is prepended to the durable registry order. Different
  * projects may share a display title.
- * @param path - One existing directory, an array whose first entry is the primary root, or an empty array for a project whose repositories are not declared yet.
- * @param title - Display title; required when `path` is empty, since there is no root to derive one from.
+ * @param path - One existing directory, an array whose first entry is the primary
+ *   root, or an empty array for a project whose repositories are not declared yet.
+ * @param title - Display title; required when `path` is empty, since there is no root
+ *   to derive one from.
  * @returns the existing or newly durable project.
  */
 async create(path: string | readonly string[], title?: string): Promise<Workspace>
